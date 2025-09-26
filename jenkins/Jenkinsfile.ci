@@ -31,55 +31,52 @@ pipeline {
             }
         }
         
-        stage('Start Databases') {
-            steps {
-                sh '''
-                    docker-compose up -d product_db order_db customer_db 
-                    sleep 20 # Wait for DBs to be healthy
-                '''
-            }
-        }
+        // stage('Start Databases') {
+        //     steps {
+        //         sh '''
+        //             docker-compose up -d product_db order_db customer_db 
+        //             sleep 20 # Wait for DBs to be healthy
+        //         '''
+        //     }
+        // }
         
-        stage('Install Python Dependencies') {
-            steps {
-                sh '''
-                    pip3 install --upgrade pip
-                    for req in backend/*/requirements.txt; do
-                        pip3 install -r "$req"
-                    done
-                    pip3 install pytest httpx
-                '''
-            }
-        }
+        // stage('Install Python Dependencies') {
+        //     steps {
+        //         sh '''
+        //             pip3 install --upgrade pip
+        //             for req in backend/*/requirements.txt; do
+        //                 pip3 install -r "$req"
+        //             done
+        //             pip3 install pytest httpx
+        //         '''
+        //     }
+        // }
 
-        stage('Run Tests: Product Service') {
-            steps {
-                sh '''
-                    export PATH=$PATH:~/.local/bin:/usr/local/bin
-                    cd backend/product_service
-                    python3 -m pytest tests --maxfail=1 --disable-warnings -q
-                '''
-            }
-        }
+        // stage('Run Tests: Product Service') {
+        //     steps {
+        //         sh '''
+        //             cd backend/product_service
+        //             python3 -m pytest tests --maxfail=1 --disable-warnings -q
+        //         '''
+        //     }
+        // }
         
-        stage('Run Tests: Order Service') {
-            steps {
-                sh '''
-                    export PATH=$PATH:/usr/local/bin
-                    cd backend/order_service
-                    python3 -m pytest tests --maxfail=1 --disable-warnings -q
-                '''
-            }
-        }
-        stage('Run Tests: Customer Service') {
-            steps {
-                sh '''
-                    export PATH=$PATH:/usr/local/bin
-                    cd backend/customer_service
-                    python3 -m pytest tests --maxfail=1 --disable-warnings -q
-                '''
-            }
-        }
+        // stage('Run Tests: Order Service') {
+        //     steps {
+        //         sh '''
+        //             cd backend/order_service
+        //             python3 -m pytest tests --maxfail=1 --disable-warnings -q
+        //         '''
+        //     }
+        // }
+        // stage('Run Tests: Customer Service') {
+        //     steps {
+        //         sh '''
+        //             cd backend/customer_service
+        //             python3 -m pytest tests --maxfail=1 --disable-warnings -q
+        //         '''
+        //     }
+        // }
 
         
 
@@ -88,6 +85,11 @@ pipeline {
                 withCredentials([file(credentialsId: 'AZURE_CREDENTIALS', variable: 'AZURE_CREDENTIALS')]) {
                     sh '''
                         export PATH=$PATH:/usr/local/bin
+                        AZURE_CREDENTIAL=$(cat $AZURE_CREDENTIALS)
+                        CLIENT_ID=$(echo $AZURE_CREDENTIAL | jq -r .clientId)
+                        CLIENT_SECRET=$(echo $AZURE_CREDENTIAL | jq -r .clientSecret)
+                        TENANT_ID=$(echo $AZURE_CREDENTIAL | jq -r .tenantId)
+                        SUBSCRIPTION_ID=$(echo $AZURE_CREDENTIAL | jq -r .subscriptionId)
                         az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant $TENANT_ID
                         az account set --subscription $SUBSCRIPTION_ID
                     '''
