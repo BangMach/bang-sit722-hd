@@ -106,9 +106,10 @@ pipeline {
 
         stage('Cleanup') {
             steps {
-                export PATH=$PATH:/usr/local/bin
- 
-                sh 'docker-compose down'
+                sh '''
+                    export PATH=$PATH:/usr/local/bin
+                    docker-compose down
+                '''
             }
         }
         // ...other stages (build, push, deploy, etc.)
