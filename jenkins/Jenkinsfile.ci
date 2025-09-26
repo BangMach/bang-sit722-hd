@@ -34,7 +34,7 @@ pipeline {
         stage('Start Databases') {
             steps {
                 sh '''
-                    docker-compose up -d product_db order_db customer_db
+                    docker-compose up -d product_db order_db customer_db 
                     sleep 20 # Wait for DBs to be healthy
                 '''
             }
@@ -61,7 +61,8 @@ pipeline {
                 '''
             }
         }
-                stage('Run Tests: Order Service') {
+        
+        stage('Run Tests: Order Service') {
             steps {
                 sh '''
                     export PATH=$PATH:/usr/local/bin
