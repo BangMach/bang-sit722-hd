@@ -21,7 +21,7 @@ pipeline {
         stage('Install Tools') {
             steps {
             sh '''
-                python3.9 --version
+                python3 --version
                 pip3 --version
                 docker-compose --version
             '''
