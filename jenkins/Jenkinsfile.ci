@@ -12,14 +12,14 @@ pipeline {
                 git branch: "${params.BRANCH_NAME}", url: 'https://github.com/BangMach/8.2CDevSecOps3.git'
             }
         }
-        
+
         stage('Install Tools') {
             steps {
                 sh '''
                     # Install Python 3.10 if not present
                     if ! command -v python3.10 &> /dev/null; then
-                        sudo apt-get update
-                        sudo apt-get install -y python3.10 python3.10-venv python3.10-distutils
+                        apt-get update
+                        apt-get install -y python3.10 python3.10-venv python3.10-distutils
                     fi
                     python3.10 --version
                     # Install pip if not present
