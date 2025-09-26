@@ -1,0 +1,32 @@
+pipeline {
+    agent any
+    environment {
+        ACR_LOGIN_SERVER = credentials('acr-login-server') // ID you set in Jenkins
+    }
+    stages {
+        stage('Azure Login') {
+            steps {
+                withCredentials([file(credentialsId: 'azure-credential', variable: 'AZURE_CREDENTIAL_FILE')]) {
+                    sh '''
+                        AZURE_CREDENTIAL=$(cat $AZURE_CREDENTIAL_FILE)
+                        CLIENT_ID=$(echo $AZURE_CREDENTIAL | jq -r .clientId)
+                        CLIENT_SECRET=$(echo $AZURE_CREDENTIAL | jq -r .clientSecret)
+                        TENANT_ID=$(echo $AZURE_CREDENTIAL | jq -r .tenantId)
+                        SUBSCRIPTION_ID=$(echo $AZURE_CREDENTIAL | jq -r .subscriptionId)
+
+                        az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant $TENANT_ID
+                        az account set --subscription $SUBSCRIPTION_ID
+                    '''
+                }
+            }
+        }
+        stage('ACR Login') {
+            steps {
+                sh '''
+                    az acr login --name $ACR_LOGIN_SERVER
+                '''
+            }
+        }
+        // ...other stages (build, push, deploy, etc.)
+    }
+}
