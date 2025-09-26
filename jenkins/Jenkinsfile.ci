@@ -7,13 +7,10 @@ pipeline {
         POSTGRES_USER = 'postgres'
         POSTGRES_PASSWORD = 'postgres'
     }
-    parameters {
-        string(name: 'BRANCH_NAME', defaultValue: 'testing', description: 'Branch to build')
-    }
-    tools {
-        // Use Python tool if configured in Jenkins
-        // python 'python-3.10'
-    }
+    // parameters {
+    //     string(name: 'BRANCH_NAME', defaultValue: 'testing', description: 'Branch to build')
+    // }
+
     stages {
         stage('Checkout') {
             steps {
