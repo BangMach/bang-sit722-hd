@@ -23,6 +23,7 @@ pipeline {
             sh '''
                 python3 --version
                 pip3 --version
+                export PATH=$PATH:/usr/local/bin
                 docker-compose --version
             '''
             }
