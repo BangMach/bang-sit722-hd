@@ -1,15 +1,15 @@
 # DevOps Pipeline Implementation Plan for Task10_2D
 
 ## Overview
-This plan outlines the implementation of a two-stage DevOps pipeline (Staging and Production) for the Task10_2D repository, a microservices e-commerce application deployed on Azure Kubernetes Service (AKS). The pipeline will use GitHub Actions for CI/CD, triggered by pushes to specific branches. Staging is temporary and destroyed after testing; Production is persistent. Incorporates Azure deployment best practices: use managed identities for secure access, infrastructure as code with Bicep/ARM, enable Azure Policy, and monitor with Azure Monitor.
-
+This plan outlines the implementation of a comprehensive DevOps pipeline for the Task10_3HD repository, a microservices e-commerce application deployed on Azure Kubernetes Service (AKS). The solution integrates Jenkins pipelines with OpenTofu for infrastructure as code, while maintaining GitHub integration for triggering. The pipeline includes staging (temporary) and production (persistent) environments with automated testing, deployment, and rollback capabilities.
 ## Implementation Phases
 
-### Phase 1: Repository Setup and CI Pipeline (Stage 1)
-- Create a new GitHub repository.
-- Push the downloaded code to the remote repository.
-- Create a GitHub Actions workflow for CI: Triggered on push to 'testing' branch.
-- Workflow steps: Lint code, run unit tests for all services (product_service, order_service, customer_service), build Docker images, push to Azure Container Registry (ACR) if tests pass.
+### Phase 1: Infrastructure as Code Setup (Terraform/OpenTofu)
+- Create Terraform configuration for Azure infrastructure
+- Configure Azure Resource Group, ACR, and AKS resources
+- Set up environment-specific variable files (staging.tfvars, production.tfvars)
+- Implement remote state management for production use
+- Add monitoring and logging components (Log Analytics, Application Insights)
 
 ### Phase 2: Staging Deployment (Stage 2)
 - Add a second job in the workflow: After image push to ACR, use Azure CLI to create temporary staging AKS resources (e.g., namespace, deployments).
