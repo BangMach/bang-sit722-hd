@@ -2,9 +2,17 @@ pipeline {
     agent any
     environment {
         ACR_LOGIN_SERVER = credentials('ACR_LOGIN_SERVER') // ID you set in Jenkins
+        // Database configuration for tests
+        POSTGRES_HOST = 'localhost'
+        POSTGRES_USER = 'postgres'
+        POSTGRES_PASSWORD = 'postgres'
     }
     parameters {
         string(name: 'BRANCH_NAME', defaultValue: 'testing', description: 'Branch to build')
+    }
+    tools {
+        // Use Python tool if configured in Jenkins
+        // python 'python-3.10'
     }
     stages {
         stage('Checkout') {
@@ -16,7 +24,7 @@ pipeline {
         stage('Install Tools') {
             steps {
             sh '''
-                python3.10 --version
+                python3.9 --version
                 pip3 --version
                 docker-compose --version
             '''
