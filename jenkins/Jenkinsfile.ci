@@ -8,6 +8,7 @@ pipeline {
         POSTGRES_PASSWORD = 'postgres'
         PATH = "/usr/local/bin:$PATH"
         
+        
     }
     parameters {
         string(name: 'BRANCH_NAME', defaultValue: 'testing', description: 'Branch to build')
@@ -54,8 +55,9 @@ pipeline {
         stage('Run Tests: Product Service') {
             steps {
                 sh '''
+                    export PATH=$PATH:~/.local/bin:/usr/local/bin
                     cd backend/product_service
-                    pytest tests --maxfail=1 --disable-warnings -q
+                    python3 -m tests --maxfail=1 --disable-warnings -q
                 '''
             }
         }
@@ -64,7 +66,7 @@ pipeline {
                 sh '''
                     export PATH=$PATH:/usr/local/bin
                     cd backend/order_service
-                    pytest tests --maxfail=1 --disable-warnings -q
+                    python3 -m tests --maxfail=1 --disable-warnings -q
                 '''
             }
         }
@@ -73,7 +75,7 @@ pipeline {
                 sh '''
                     export PATH=$PATH:/usr/local/bin
                     cd backend/customer_service
-                    pytest tests --maxfail=1 --disable-warnings -q
+                    python3 -m tests --maxfail=1 --disable-warnings -q
                 '''
             }
         }
