@@ -25,7 +25,6 @@ pipeline {
             sh '''
                 python3 --version
                 pip3 --version
-                export PATH=$PATH:/usr/local/bin
                 docker-compose --version
             '''
             }
@@ -34,7 +33,6 @@ pipeline {
         stage('Start Databases') {
             steps {
                 sh '''
-                    export PATH=$PATH:/usr/local/bin
                     docker-compose up -d product_db order_db customer_db
                     sleep 20 # Wait for DBs to be healthy
                 '''
@@ -44,7 +42,6 @@ pipeline {
         stage('Install Python Dependencies') {
             steps {
                 sh '''
-                    export PATH=$PATH:/usr/local/bin
                     pip3 install --upgrade pip
                     for req in backend/*/requirements.txt; do
                         pip3 install -r "$req"
@@ -57,7 +54,6 @@ pipeline {
         stage('Run Tests: Product Service') {
             steps {
                 sh '''
-                    export PATH=$PATH:/usr/local/bin               
                     cd backend/product_service
                     pytest tests --maxfail=1 --disable-warnings -q
                 '''
