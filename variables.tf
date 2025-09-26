@@ -3,13 +3,13 @@
 variable "prefix" {
   description = "Prefix for all resource names"
   type        = string
-  default     = "bang-sit722-hd"
+  default     = "banghdsit722"
 }
 
 variable "location" {
   description = "Azure region"
   type        = string
-  default     = "australia-southeast"
+  default     = "australiasoutheast"
 }
 
 variable "kubernetes_version" {
