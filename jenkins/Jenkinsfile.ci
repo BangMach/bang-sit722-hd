@@ -6,9 +6,9 @@ pipeline {
     stages {
         stage('Azure Login') {
             steps {
-                withCredentials([file(credentialsId: 'azure-credential', variable: 'AZURE_CREDENTIAL_FILE')]) {
+                withCredentials([file(credentialsId: 'azure-credential', variable: 'AZURE_CREDENTIALS')]) {
                     sh '''
-                        AZURE_CREDENTIAL=$(cat $AZURE_CREDENTIAL_FILE)
+                        AZURE_CREDENTIAL=$(cat $AZURE_CREDENTIALS)
                         CLIENT_ID=$(echo $AZURE_CREDENTIAL | jq -r .clientId)
                         CLIENT_SECRET=$(echo $AZURE_CREDENTIAL | jq -r .clientSecret)
                         TENANT_ID=$(echo $AZURE_CREDENTIAL | jq -r .tenantId)
