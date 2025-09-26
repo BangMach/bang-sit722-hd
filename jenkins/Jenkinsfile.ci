@@ -3,7 +3,41 @@ pipeline {
     environment {
         ACR_LOGIN_SERVER = credentials('ACR_LOGIN_SERVER') // ID you set in Jenkins
     }
+    parameters {
+        string(name: 'BRANCH_NAME', defaultValue: 'testing', description: 'Branch to build')
+    }
     stages {
+        stage('Checkout') {
+            steps {
+                git branch: "${params.BRANCH_NAME}", url: 'https://github.com/BangMach/8.2CDevSecOps3.git'
+            }
+        }
+        
+        stage('Install Tools') {
+            steps {
+                sh '''
+                    # Install Python 3.10 if not present
+                    if ! command -v python3.10 &> /dev/null; then
+                        sudo apt-get update
+                        sudo apt-get install -y python3.10 python3.10-venv python3.10-distutils
+                    fi
+                    python3.10 --version
+                    # Install pip if not present
+                    if ! command -v pip3 &> /dev/null; then
+                        curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+                        python3.10 get-pip.py
+                    fi
+                    pip3 --version
+                    # Install Docker Compose if not present
+                    if ! command -v docker-compose &> /dev/null; then
+                        sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+                        sudo chmod +x /usr/local/bin/docker-compose
+                    fi
+                    docker-compose --version
+                '''
+            }
+        }
+
         stage('Azure Login') {
             steps {
                 withCredentials([file(credentialsId: 'AZURE_CREDENTIALS', variable: 'AZURE_CREDENTIALS')]) {
