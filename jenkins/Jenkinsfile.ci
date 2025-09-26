@@ -57,7 +57,7 @@ pipeline {
                 sh '''
                     export PATH=$PATH:~/.local/bin:/usr/local/bin
                     cd backend/product_service
-                    python3 -m tests --maxfail=1 --disable-warnings -q
+                    python3 -m pytest tests --maxfail=1 --disable-warnings -q
                 '''
             }
         }
@@ -66,7 +66,7 @@ pipeline {
                 sh '''
                     export PATH=$PATH:/usr/local/bin
                     cd backend/order_service
-                    python3 -m tests --maxfail=1 --disable-warnings -q
+                    python3 -m pytest tests --maxfail=1 --disable-warnings -q
                 '''
             }
         }
@@ -75,10 +75,12 @@ pipeline {
                 sh '''
                     export PATH=$PATH:/usr/local/bin
                     cd backend/customer_service
-                    python3 -m tests --maxfail=1 --disable-warnings -q
+                    python3 -m pytest tests --maxfail=1 --disable-warnings -q
                 '''
             }
         }
+
+        
 
         stage('Azure Login') {
             steps {
