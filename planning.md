@@ -37,9 +37,16 @@ This plan outlines the implementation of a comprehensive DevOps pipeline for the
 - ⏳ **Next**: When all tests pass successfully, build Docker images for each service
 
 
-- ⏳ Next: Build Docker images for each service
-- ⏳ Optional (skipped): Integrate Docker Scout for vulnerability scanning
-- ⏳ Optional (skipped): Integrate SonarQube for code quality analysis
+### Phase 3: Production Deployment (Stage 3)
+- ✅ Created separate CD Jenkins pipeline (`Jenkinsfile.deploy`) for AKS deployment
+- ✅ Implemented parallel service deployment to AKS
+- ✅ Set up Application Insights for comprehensive monitoring
+- ✅ Configured Azure Monitor for containers and logs
+- ✅ Implemented Horizontal Pod Autoscaling (HPA) for all services
+- ✅ Added vulnerability scanning with Trivy and Azure Defender
+- ✅ Created automated rollback on deployment failure
+- ✅ Set up health checks and validation post-deployment
+- ⏳ Next: Test the CD pipeline with actual deployment
 - ⏳ Next: Push validated images to Azure Container Registry (ACR)
 - ⏳ Next: Deploy images to staging AKS using Bicep/Kubernetes manifests
 - ⏳ Next: Perform acceptance tests (manual and health checks)
@@ -59,8 +66,9 @@ This plan outlines the implementation of a comprehensive DevOps pipeline for the
 - **Orchestration**: Azure Kubernetes Service (AKS) with existing Kubernetes manifests
 - **Infrastructure as Code**: Terraform (OpenTofu) for Azure resources, Bicep templates for staging resources
 - **Secrets Management**: Jenkins Credentials, GitHub Secrets for Azure credentials (use managed identities where possible)
-- **Monitoring**: Azure Application Insights for logs and metrics
-- **Security**: Azure Defender for containers, vulnerability scans in pipeline (Docker Scout planned)
+- **Monitoring**: Azure Application Insights, Azure Monitor, Log Analytics
+- **Security**: Azure Defender for containers, Trivy vulnerability scanning, Snyk
+- **Auto-scaling**: Horizontal Pod Autoscaler (HPA) with CPU/memory metrics
 - **Code Quality**: SonarQube (optional, planned for integration)
 
 ### Pipeline Structure

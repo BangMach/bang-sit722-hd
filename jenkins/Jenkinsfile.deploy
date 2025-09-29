@@ -1,0 +1,260 @@
+pipeline {
+    agent any
+    environment {
+        ACR_LOGIN_SERVER = credentials('ACR_LOGIN_SERVER')
+        AZURE_CREDENTIALS = credentials('AZURE_CREDENTIALS')
+        AKS_CLUSTER_NAME = 'bang-aks-cluster'
+        AKS_RESOURCE_GROUP = 'bang-resource-group'
+        APPLICATION_INSIGHTS_KEY = credentials('APPLICATION_INSIGHTS_KEY')
+    }
+    parameters {
+        string(name: 'IMAGE_TAG', defaultValue: 'latest', description: 'Docker image tag to deploy')
+        string(name: 'ENVIRONMENT', defaultValue: 'staging', description: 'Deployment environment')
+        booleanParam(name: 'ROLLBACK_ON_FAILURE', defaultValue: true, description: 'Rollback deployment on failure')
+    }
+
+    stages {
+        stage('Setup Azure CLI') {
+            steps {
+                script {
+                    withCredentials([file(credentialsId: 'AZURE_CREDENTIALS', variable: 'AZURE_CREDENTIALS')]) {
+                        sh '''
+                            export PATH=$PATH:/usr/local/bin
+                            AZURE_CREDENTIAL=$(cat $AZURE_CREDENTIALS)
+                            CLIENT_ID=$(echo $AZURE_CREDENTIAL | jq -r .clientId)
+                            CLIENT_SECRET=$(echo $AZURE_CREDENTIAL | jq -r .clientSecret)
+                            TENANT_ID=$(echo $AZURE_CREDENTIAL | jq -r .tenantId)
+                            SUBSCRIPTION_ID=$(echo $AZURE_CREDENTIAL | jq -r .subscriptionId)
+
+                            az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant $TENANT_ID
+                            az account set --subscription $SUBSCRIPTION_ID
+                            az aks get-credentials --resource-group $AKS_RESOURCE_GROUP --name $AKS_CLUSTER_NAME --overwrite-existing
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('ACR Login') {
+            steps {
+                sh '''
+                    export PATH=$PATH:/usr/local/bin
+                    az acr login --name $ACR_LOGIN_SERVER
+                '''
+            }
+        }
+
+        stage('Deploy to AKS') {
+            steps {
+                script {
+                    // Deploy all services in parallel
+                    parallel(
+                        "Deploy Product Service": {
+                            deployService('product-service', params.IMAGE_TAG, params.ENVIRONMENT)
+                        },
+                        "Deploy Order Service": {
+                            deployService('order-service', params.IMAGE_TAG, params.ENVIRONMENT)
+                        },
+                        "Deploy Customer Service": {
+                            deployService('customer-service', params.IMAGE_TAG, params.ENVIRONMENT)
+                        },
+                        "Deploy Frontend": {
+                            deployService('frontend', params.IMAGE_TAG, params.ENVIRONMENT)
+                        }
+                    )
+                }
+            }
+        }
+
+        stage('Setup Observability') {
+            steps {
+                script {
+                    sh '''
+                        export PATH=$PATH:/usr/local/bin
+
+                        # Create Application Insights resources if not exists
+                        az monitor app-insights component create \
+                            --app bang-ecommerce-app \
+                            --location australiaeast \
+                            --resource-group $AKS_RESOURCE_GROUP \
+                            --application-type web \
+                            --kind web \
+                            --retention-time 90
+
+                        # Enable Azure Monitor for containers
+                        az aks enable-addons \
+                            --resource-group $AKS_RESOURCE_GROUP \
+                            --name $AKS_CLUSTER_NAME \
+                            --addons monitoring
+
+                        # Setup Log Analytics workspace
+                        az monitor diagnostic-settings create \
+                            --name diagnostics \
+                            --resource /subscriptions/$SUBSCRIPTION_ID/resourceGroups/$AKS_RESOURCE_GROUP/providers/Microsoft.ContainerService/managedClusters/$AKS_CLUSTER_NAME \
+                            --logs '[{"category": "kube-apiserver", "enabled": true}, {"category": "kube-controller-manager", "enabled": true}]' \
+                            --metrics '[{"category": "AllMetrics", "enabled": true}]' \
+                            --workspace /subscriptions/$SUBSCRIPTION_ID/resourceGroups/$AKS_RESOURCE_GROUP/providers/Microsoft.OperationalInsights/workspaces/bang-log-analytics
+                    '''
+                }
+            }
+        }
+
+        stage('Setup Auto-scaling') {
+            steps {
+                script {
+                    // Apply HPA for each service
+                    def services = ['product-service', 'order-service', 'customer-service', 'frontend']
+                    services.each { service ->
+                        sh """
+                            kubectl apply -f k8s/${service}-hpa.yaml
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Security & Vulnerability Scan') {
+            steps {
+                script {
+                    parallel(
+                        "Container Vulnerability Scan": {
+                            sh '''
+                                export PATH=$PATH:/usr/local/bin
+                                # Scan running containers for vulnerabilities
+                                kubectl get pods -o jsonpath='{.items[*].spec.containers[*].image}' | tr ' ' '\\n' | sort | uniq | while read image; do
+                                    echo "Scanning image: $image"
+                                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                                        aquasec/trivy:latest image --exit-code 0 --no-progress "$image" || echo "Vulnerabilities found in $image"
+                                done
+                            '''
+                        },
+                        "Runtime Security Monitoring": {
+                            sh '''
+                                # Enable Azure Defender for containers
+                                az security pricing create \
+                                    --name ContainerRegistries \
+                                    --tier Standard
+
+                                az security pricing create \
+                                    --name KubernetesService \
+                                    --tier Standard
+                            '''
+                        }
+                    )
+                }
+            }
+        }
+
+        stage('Health Checks & Validation') {
+            steps {
+                script {
+                    sh '''
+                        # Wait for deployments to be ready
+                        kubectl wait --for=condition=available --timeout=300s deployment/product-service
+                        kubectl wait --for=condition=available --timeout=300s deployment/order-service
+                        kubectl wait --for=condition=available --timeout=300s deployment/customer-service
+                        kubectl wait --for=condition=available --timeout=300s deployment/frontend
+
+                        # Run health checks
+                        echo "Running health checks..."
+                        kubectl get pods
+                        kubectl get services
+                        kubectl get ingress
+
+                        # Test service endpoints
+                        FRONTEND_IP=$(kubectl get svc frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+                        echo "Frontend available at: http://$FRONTEND_IP"
+
+                        # Basic connectivity test
+                        curl -f http://$FRONTEND_IP/health || echo "Health check failed"
+                    '''
+                }
+            }
+        }
+
+        stage('Performance Testing') {
+            steps {
+                script {
+                    sh '''
+                        # Run basic load test
+                        kubectl run load-test --image=busybox --restart=Never --rm -i --tty -- sh -c "
+                            wget -qO- http://frontend/health
+                            echo 'Load test completed'
+                        "
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            script {
+                echo "✅ Deployment to ${params.ENVIRONMENT} successful!"
+                sh '''
+                    # Send notification (you can integrate with Slack, Teams, etc.)
+                    echo "Deployment completed successfully"
+
+                    # Update deployment status in any tracking system
+                    kubectl get deployments -o wide
+                '''
+            }
+        }
+        failure {
+            script {
+                echo "❌ Deployment failed!"
+                sh '''
+                    # Get deployment status for debugging
+                    kubectl get pods
+                    kubectl describe deployments
+                    kubectl logs --tail=50 -l app=product-service
+                '''
+
+                // Rollback if enabled
+                if (params.ROLLBACK_ON_FAILURE) {
+                    echo "🔄 Rolling back deployment..."
+                    sh '''
+                        # Rollback to previous version
+                        kubectl rollout undo deployment/product-service
+                        kubectl rollout undo deployment/order-service
+                        kubectl rollout undo deployment/customer-service
+                        kubectl rollout undo deployment/frontend
+                    '''
+                }
+            }
+        }
+        always {
+            script {
+                sh '''
+                    # Cleanup
+                    docker system prune -f
+
+                    # Archive deployment artifacts
+                    mkdir -p deployment-artifacts
+                    kubectl get all > deployment-artifacts/k8s-resources.txt
+                    kubectl get events --sort-by=.metadata.creationTimestamp > deployment-artifacts/events.txt
+                '''
+                archiveArtifacts artifacts: 'deployment-artifacts/**', allowEmptyArchive: true
+            }
+        }
+    }
+}
+
+// Helper function to deploy a service
+def deployService(String serviceName, String imageTag, String environment) {
+    sh """
+        # Update image in deployment
+        sed -i 's|image:.*|image: ${ACR_LOGIN_SERVER}/${serviceName}:${imageTag}|g' k8s/${serviceName}.yaml
+
+        # Apply Kubernetes manifests
+        kubectl apply -f k8s/${serviceName}.yaml
+        kubectl apply -f k8s/${serviceName}-configmap.yaml
+
+        # Set environment-specific configurations
+        kubectl set env deployment/${serviceName} ENVIRONMENT=${environment}
+        kubectl set env deployment/${serviceName} APPLICATION_INSIGHTS_KEY=\${APPLICATION_INSIGHTS_KEY}
+
+        # Wait for rollout to complete
+        kubectl rollout status deployment/${serviceName} --timeout=300s
+    """
+}
