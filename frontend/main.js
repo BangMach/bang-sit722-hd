@@ -1,5 +1,41 @@
 // week05/frontend/main.js
 
+// Export utility functions for testing
+function formatCurrency(amount) {
+    return `$${parseFloat(amount).toFixed(2)}`;
+}
+
+function showMessage(message, type = 'info') {
+    const messageBox = document.getElementById('message-box');
+    messageBox.textContent = message;
+    messageBox.className = `message-box ${type}`;
+    messageBox.style.display = 'block';
+    // Hide after 5 seconds
+    setTimeout(() => {
+        messageBox.style.display = 'none';
+    }, 5000);
+}
+
+function addToCart(cart, productId, productName, productPrice) {
+    const existingItemIndex = cart.findIndex(item => item.product_id === productId);
+
+    if (existingItemIndex !== -1) {
+        cart[existingItemIndex].quantity += 1;
+    } else {
+        cart.push({
+            product_id: productId,
+            name: productName,
+            price: productPrice,
+            quantity: 1
+        });
+    }
+    return cart; // Return updated cart for testing
+}
+
+function calculateCartTotal(cart) {
+    return cart.reduce((total, item) => total + (item.price * item.quantity), 0);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // API endpoints for the Product, Order, and Customer services.
     // These ports are mapped from the Docker containers to the host m'achine in docker-compose.yml.
@@ -21,24 +57,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // Shopping Cart State
     let cart = [];
     let productsCache = {}; // Cache products fetched to easily get details for cart items
-
-    // --- Utility Functions ---
-
-    // Function to display messages to the user (success, error, info)
-    function showMessage(message, type = 'info') {
-        messageBox.textContent = message;
-        messageBox.className = `message-box ${type}`;
-        messageBox.style.display = 'block';
-        // Hide after 5 seconds
-        setTimeout(() => {
-            messageBox.style.display = 'none';
-        }, 5000);
-    }
-
-    // Function to format currency
-    function formatCurrency(amount) {
-        return `$${parseFloat(amount).toFixed(2)}`;
-    }
 
     // --- Product Service Interactions ---
 
@@ -160,7 +178,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const productName = event.target.dataset.name;
             const productPrice = parseFloat(event.target.dataset.price);
             
-            addToCart(productId, productName, productPrice);
+            cart = addToCart(cart, productId, productName, productPrice);
+            updateCartDisplay();
+            showMessage(`Added "${productName}" to cart!`, 'info');
         }
 
         // Upload Product Image
@@ -203,26 +223,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Shopping Cart Functions ---
 
-    function addToCart(productId, productName, productPrice) {
-        const existingItemIndex = cart.findIndex(item => item.product_id === productId);
-
-        if (existingItemIndex !== -1) {
-            cart[existingItemIndex].quantity += 1;
-        } else {
-            cart.push({
-                product_id: productId,
-                name: productName,
-                price: productPrice,
-                quantity: 1
-            });
-        }
-        updateCartDisplay();
-        showMessage(`Added "${productName}" to cart!`, 'info');
-    }
-
     function updateCartDisplay() {
         cartItemsList.innerHTML = '';
-        let totalCartAmount = 0;
+        const totalCartAmount = calculateCartTotal(cart);
 
         if (cart.length === 0) {
             cartItemsList.innerHTML = '<li>Your cart is empty.</li>';
@@ -230,7 +233,6 @@ document.addEventListener('DOMContentLoaded', () => {
             cart.forEach(item => {
                 const li = document.createElement('li');
                 const itemTotal = item.quantity * item.price;
-                totalCartAmount += itemTotal;
                 li.innerHTML = `
                     <span>${item.name} (x${item.quantity})</span>
                     <span>${formatCurrency(item.price)} each - ${formatCurrency(itemTotal)}</span>
@@ -540,3 +542,8 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(fetchProducts, 15000); // Refresh products every 15 seconds to see stock changes
 
 });
+
+// Export for testing
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { formatCurrency, showMessage, addToCart, calculateCartTotal };
+}

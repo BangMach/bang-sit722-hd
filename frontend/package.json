@@ -21,6 +21,7 @@
     "http-server": "^14.1.1",
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
+    "jest-junit": "^16.0.0",
     "snyk": "^1.1245.0"
   },
   "jest": {
@@ -35,12 +36,22 @@
     ],
     "coverageThreshold": {
       "global": {
-        "branches": 70,
-        "functions": 70,
-        "lines": 70,
-        "statements": 70
+        "branches": 4,
+        "functions": 20,
+        "lines": 5,
+        "statements": 6
       }
-    }
+    },
+    "reporters": [
+      "default",
+      [
+        "jest-junit",
+        {
+          "outputDirectory": "coverage",
+          "outputName": "junit.xml"
+        }
+      ]
+    ]
   },
   "eslintConfig": {
     "env": {

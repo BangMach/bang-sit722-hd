@@ -2,10 +2,8 @@
  * @jest-environment jsdom
  */
 
+const { formatCurrency, showMessage, addToCart, calculateCartTotal } = require('../main.js');
 const testHTML = require('./testHTML');
-
-// Mock the main.js functions since we need to test them
-// We'll need to refactor main.js to be testable
 describe('Frontend E-commerce Application Tests', () => {
     beforeEach(() => {
         // Set up DOM
@@ -20,11 +18,6 @@ describe('Frontend E-commerce Application Tests', () => {
 
     describe('Utility Functions', () => {
         test('formatCurrency should format numbers correctly', () => {
-            // We need to extract this function to test it
-            const formatCurrency = (amount) => {
-                return `$${parseFloat(amount).toFixed(2)}`;
-            };
-            
             expect(formatCurrency(10)).toBe('$10.00');
             expect(formatCurrency(10.5)).toBe('$10.50');
             expect(formatCurrency(10.555)).toBe('$10.55');
@@ -33,14 +26,9 @@ describe('Frontend E-commerce Application Tests', () => {
         });
 
         test('showMessage should display message correctly', () => {
+            // Set up DOM
+            document.documentElement.innerHTML = testHTML;
             const messageBox = document.getElementById('message-box');
-            
-            // Mock the showMessage function
-            const showMessage = (message, type = 'info') => {
-                messageBox.textContent = message;
-                messageBox.className = `message-box ${type}`;
-                messageBox.style.display = 'block';
-            };
             
             showMessage('Test message', 'success');
             
@@ -199,12 +187,6 @@ describe('Frontend E-commerce Application Tests', () => {
 
     describe('Shopping Cart Tests', () => {
         test('cart should calculate total correctly', () => {
-            const calculateCartTotal = (cartItems) => {
-                return cartItems.reduce((total, item) => {
-                    return total + (item.price * item.quantity);
-                }, 0);
-            };
-            
             const cart = [
                 { id: 1, price: 10.99, quantity: 2 },
                 { id: 2, price: 5.50, quantity: 1 }
@@ -217,34 +199,19 @@ describe('Frontend E-commerce Application Tests', () => {
         test('cart should add items correctly', () => {
             let cart = [];
             
-            const addToCart = (cart, product, quantity = 1) => {
-                const existingItem = cart.find(item => item.id === product.id);
-                
-                if (existingItem) {
-                    existingItem.quantity += quantity;
-                } else {
-                    cart.push({ ...product, quantity });
-                }
-                
-                return cart;
-            };
-            
-            const product1 = { id: 1, name: 'Product 1', price: 10.99 };
-            const product2 = { id: 2, name: 'Product 2', price: 5.50 };
-            
             // Add new product
-            cart = addToCart(cart, product1, 2);
+            cart = addToCart(cart, 1, 'Product 1', 10.99);
             expect(cart).toHaveLength(1);
-            expect(cart[0].quantity).toBe(2);
+            expect(cart[0].quantity).toBe(1);
             
             // Add different product
-            cart = addToCart(cart, product2, 1);
+            cart = addToCart(cart, 2, 'Product 2', 5.50);
             expect(cart).toHaveLength(2);
             
             // Add existing product (should increase quantity)
-            cart = addToCart(cart, product1, 1);
+            cart = addToCart(cart, 1, 'Product 1', 10.99);
             expect(cart).toHaveLength(2);
-            expect(cart[0].quantity).toBe(3);
+            expect(cart[0].quantity).toBe(2);
         });
     });
 

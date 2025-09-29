@@ -145,16 +145,16 @@ pipeline {
             sh 'docker-compose down || true'
             sh 'az logout || true'
             
-            // Publish results
-            publishTestResults testResultsPattern: '**/coverage/junit.xml'
-            publishHTML([
-                allowMissing: false,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: 'frontend/coverage/lcov-report',
-                reportFiles: 'index.html',
-                reportName: 'Coverage Report'
-            ])
+                // Publish test results (JUnit)
+                junit '**/coverage/junit.xml'
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'frontend/coverage/lcov-report',
+                    reportFiles: 'index.html',
+                    reportName: 'Coverage Report'
+                ])
         }
         
         success {

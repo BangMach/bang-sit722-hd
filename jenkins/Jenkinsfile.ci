@@ -55,8 +55,13 @@ pipeline {
             steps {
                 sh '''
                     cd backend/product_service
-                    python3 -m pytest tests --maxfail=1 --disable-warnings -q
+                    python3 -m pytest tests --maxfail=1 --disable-warnings -q --junitxml=test-results.xml
                 '''
+            }
+            post {
+                always {
+                    junit 'backend/product_service/test-results.xml'
+                }
             }
         }
         
@@ -64,16 +69,26 @@ pipeline {
             steps {
                 sh '''
                     cd backend/order_service
-                    python3 -m pytest tests --maxfail=1 --disable-warnings -q
+                    python3 -m pytest tests --maxfail=1 --disable-warnings -q --junitxml=test-results.xml
                 '''
+            }
+            post {
+                always {
+                    junit 'backend/order_service/test-results.xml'
+                }
             }
         }
         stage('Run Tests: Customer Service') {
             steps {
                 sh '''
                     cd backend/customer_service
-                    python3 -m pytest tests --maxfail=1 --disable-warnings -q
+                    python3 -m pytest tests --maxfail=1 --disable-warnings -q --junitxml=test-results.xml
                 '''
+            }
+            post {
+                always {
+                    junit 'backend/customer_service/test-results.xml'
+                }
             }
         }
 
@@ -128,17 +143,15 @@ pipeline {
             post {
                 always {
                     // Publish test results
-                    publishTestResults testResultsPattern: 'frontend/coverage/junit.xml'
-                    
-                    // Archive coverage reports
-                    publishHTML([
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'frontend/coverage/lcov-report',
-                        reportFiles: 'index.html',
-                        reportName: 'Frontend Coverage Report'
-                    ])
+                        junit 'frontend/coverage/junit.xml'
+                        publishHTML([
+                            allowMissing: false,
+                            alwaysLinkToLastBuild: true,
+                            keepAll: true,
+                            reportDir: 'frontend/coverage/lcov-report',
+                            reportFiles: 'index.html',
+                            reportName: 'Frontend Coverage Report'
+                        ])
                 }
             }
         }
