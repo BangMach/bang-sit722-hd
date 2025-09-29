@@ -3,6 +3,21 @@
 ## Overview
 This plan outlines the implementation of a comprehensive DevOps pipeline for the Task10_3HD repository, a microservices e-commerce application deployed on Azure Kubernetes Service (AKS). The solution integrates Jenkins pipelines with OpenTofu for infrastructure as code, while maintaining GitHub integration for triggering. The pipeline includes staging (temporary) and production (persistent) environments with automated testing, deployment, and rollback capabilities.
 
+## Today's Progress (September 29, 2025)
+
+✅ **Completed Today**:
+- **Snyk Security Testing**: Configured Snyk for vulnerability scanning on frontend and backend services in CI pipeline
+- **Testing Framework Enhancement**: 
+  - Fixed Jest coverage issues by refactoring `main.js` to export testable functions
+  - Updated tests to use real implementations instead of mocks
+  - Added JUnit XML reporting for CI test result publishing
+  - Updated pytest commands to generate and publish test results
+  - Adjusted coverage thresholds to realistic levels
+
+**Next Step**: When all tests pass in CI, proceed to building Docker images for each service.
+
+---
+
 ## Implementation Phases
 
 ### Phase 1: Infrastructure as Code Setup (Terraform/OpenTofu)
@@ -17,14 +32,14 @@ This plan outlines the implementation of a comprehensive DevOps pipeline for the
 - ✅ Configured pipeline to run unit and integration tests using pytest for backend services
 - ✅ Mocked Azure Blob Storage for tests
 - ✅ Set up Docker Compose for local integration testing of microservices and databases
-- ⏳ Next: set up Docker Scout for front end and back end services
-- ⏳ Next: set up sonar quebes for front end and back end services
-- ⏳ Next: set up synk test
+- ✅ **Today**: Set up Snyk security testing for frontend and backend services (Docker Scout and SonarQube skipped for now)
+- ✅ **Today**: Fixed and enhanced testing framework - refactored Jest tests for proper coverage, added JUnit reporting for CI, updated pytest to publish results
+- ⏳ **Next**: When all tests pass successfully, build Docker images for each service
 
 
 - ⏳ Next: Build Docker images for each service
-- ⏳ Next: Scan Docker images using Docker Scout for vulnerabilities and best practices
-- ⏳ Optional: Integrate SonarQube for code quality analysis and display results in the pipeline
+- ⏳ Optional (skipped): Integrate Docker Scout for vulnerability scanning
+- ⏳ Optional (skipped): Integrate SonarQube for code quality analysis
 - ⏳ Next: Push validated images to Azure Container Registry (ACR)
 - ⏳ Next: Deploy images to staging AKS using Bicep/Kubernetes manifests
 - ⏳ Next: Perform acceptance tests (manual and health checks)
