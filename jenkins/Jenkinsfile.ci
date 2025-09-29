@@ -2,13 +2,12 @@ pipeline {
     agent any
     environment {
         ACR_LOGIN_SERVER = credentials('ACR_LOGIN_SERVER') // ID you set in Jenkins
+        SNYK_TOKEN = credentials('SNYK_TOKEN') // Snyk authentication token
         // Database configuration for tests
         POSTGRES_HOST = 'localhost'
         POSTGRES_USER = 'postgres'
         POSTGRES_PASSWORD = 'postgres'
         PATH = "/usr/local/bin:$PATH"
-        
-        
     }
     parameters {
         string(name: 'BRANCH_NAME', defaultValue: 'testing', description: 'Branch to build')
@@ -31,54 +30,118 @@ pipeline {
             }
         }
         
-        // stage('Start Databases') {
-        //     steps {
-        //         sh '''
-        //             docker-compose up -d product_db order_db customer_db 
-        //             sleep 20 # Wait for DBs to be healthy
-        //         '''
-        //     }
-        // }
+        stage('Start Databases') {
+            steps {
+                sh '''
+                    docker-compose up -d product_db order_db customer_db 
+                    sleep 20 # Wait for DBs to be healthy
+                '''
+            }
+        }
         
-        // stage('Install Python Dependencies') {
-        //     steps {
-        //         sh '''
-        //             pip3 install --upgrade pip
-        //             for req in backend/*/requirements.txt; do
-        //                 pip3 install -r "$req"
-        //             done
-        //             pip3 install pytest httpx
-        //         '''
-        //     }
-        // }
+        stage('Install Python Dependencies') {
+            steps {
+                sh '''
+                    pip3 install --upgrade pip
+                    for req in backend/*/requirements.txt; do
+                        pip3 install -r "$req"
+                    done
+                    pip3 install pytest httpx
+                '''
+            }
+        }
 
-        // stage('Run Tests: Product Service') {
-        //     steps {
-        //         sh '''
-        //             cd backend/product_service
-        //             python3 -m pytest tests --maxfail=1 --disable-warnings -q
-        //         '''
-        //     }
-        // }
+        stage('Run Tests: Product Service') {
+            steps {
+                sh '''
+                    cd backend/product_service
+                    python3 -m pytest tests --maxfail=1 --disable-warnings -q
+                '''
+            }
+        }
         
-        // stage('Run Tests: Order Service') {
-        //     steps {
-        //         sh '''
-        //             cd backend/order_service
-        //             python3 -m pytest tests --maxfail=1 --disable-warnings -q
-        //         '''
-        //     }
-        // }
-        // stage('Run Tests: Customer Service') {
-        //     steps {
-        //         sh '''
-        //             cd backend/customer_service
-        //             python3 -m pytest tests --maxfail=1 --disable-warnings -q
-        //         '''
-        //     }
-        // }
+        stage('Run Tests: Order Service') {
+            steps {
+                sh '''
+                    cd backend/order_service
+                    python3 -m pytest tests --maxfail=1 --disable-warnings -q
+                '''
+            }
+        }
+        stage('Run Tests: Customer Service') {
+            steps {
+                sh '''
+                    cd backend/customer_service
+                    python3 -m pytest tests --maxfail=1 --disable-warnings -q
+                '''
+            }
+        }
 
-        
+        stage('Frontend Tests and Security Scan') {
+            steps {
+                script {
+                    // Install Node.js if not available
+                    sh '''
+                        # Check if Node.js is available, install if not
+                        if ! command -v node &> /dev/null; then
+                            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+                            sudo apt-get install -y nodejs
+                        fi
+                        node --version
+                        npm --version
+                    '''
+                    
+                    // Install frontend dependencies
+                    sh '''
+                        cd frontend
+                        npm install
+                    '''
+                    
+                    // Run frontend unit tests
+                    sh '''
+                        cd frontend
+                        npm test -- --coverage --watchAll=false
+                    '''
+                    
+                    // Run Snyk security scanning
+                    sh '''
+                        cd frontend
+                        # Install Snyk globally if not available
+                        if ! command -v snyk &> /dev/null; then
+                            npm install -g snyk
+                        fi
+                        
+                        # Authenticate with Snyk (you need to set SNYK_TOKEN as Jenkins credential)
+                        snyk auth $SNYK_TOKEN || echo "Snyk auth failed - continuing without auth"
+                        
+                        # Test for vulnerabilities
+                        snyk test --severity-threshold=high || echo "Snyk found vulnerabilities"
+                        
+                        # Test for code quality issues
+                        snyk code test || echo "Snyk code analysis completed"
+                        
+                        # Monitor project (optional - for continuous monitoring)
+                        snyk monitor || echo "Snyk monitoring setup failed"
+                    '''
+                }
+            }
+            post {
+                always {
+                    // Publish test results
+                    publishTestResults testResultsPattern: 'frontend/coverage/junit.xml'
+                    
+                    // Archive coverage reports
+                    publishHTML([
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'frontend/coverage/lcov-report',
+                        reportFiles: 'index.html',
+                        reportName: 'Frontend Coverage Report'
+                    ])
+                }
+            }
+        }
 
         stage('Azure Login') {
             steps {
@@ -104,6 +167,90 @@ pipeline {
                     export PATH=$PATH:/usr/local/bin
                     az acr login --name $ACR_LOGIN_SERVER
                 '''
+            }
+        }
+
+        stage('Build and Push Docker Images') {
+            when {
+                // Only run if all previous stages passed
+                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+            }
+            parallel {
+                stage('Build Product Service') {
+                    steps {
+                        script {
+                            sh '''
+                                cd backend/product_service
+                                docker build -t $ACR_LOGIN_SERVER/product_service:${BUILD_NUMBER} .
+                                docker build -t $ACR_LOGIN_SERVER/product_service:latest .
+                                
+                                # Scan Docker image with Snyk (optional)
+                                snyk container test $ACR_LOGIN_SERVER/product_service:${BUILD_NUMBER} --severity-threshold=high || echo "Docker image vulnerabilities found"
+                                
+                                # Push images
+                                docker push $ACR_LOGIN_SERVER/product_service:${BUILD_NUMBER}
+                                docker push $ACR_LOGIN_SERVER/product_service:latest
+                            '''
+                        }
+                    }
+                }
+                
+                stage('Build Order Service') {
+                    steps {
+                        script {
+                            sh '''
+                                cd backend/order_service
+                                docker build -t $ACR_LOGIN_SERVER/order_service:${BUILD_NUMBER} .
+                                docker build -t $ACR_LOGIN_SERVER/order_service:latest .
+                                
+                                # Scan Docker image with Snyk
+                                snyk container test $ACR_LOGIN_SERVER/order_service:${BUILD_NUMBER} --severity-threshold=high || echo "Docker image vulnerabilities found"
+                                
+                                # Push images
+                                docker push $ACR_LOGIN_SERVER/order_service:${BUILD_NUMBER}
+                                docker push $ACR_LOGIN_SERVER/order_service:latest
+                            '''
+                        }
+                    }
+                }
+                
+                stage('Build Customer Service') {
+                    steps {
+                        script {
+                            sh '''
+                                cd backend/customer_service
+                                docker build -t $ACR_LOGIN_SERVER/customer_service:${BUILD_NUMBER} .
+                                docker build -t $ACR_LOGIN_SERVER/customer_service:latest .
+                                
+                                # Scan Docker image with Snyk
+                                snyk container test $ACR_LOGIN_SERVER/customer_service:${BUILD_NUMBER} --severity-threshold=high || echo "Docker image vulnerabilities found"
+                                
+                                # Push images
+                                docker push $ACR_LOGIN_SERVER/customer_service:${BUILD_NUMBER}
+                                docker push $ACR_LOGIN_SERVER/customer_service:latest
+                            '''
+                        }
+                    }
+                }
+                
+                stage('Build Frontend') {
+                    steps {
+                        script {
+                            sh '''
+                                cd frontend
+                                docker build -t $ACR_LOGIN_SERVER/frontend:${BUILD_NUMBER} .
+                                docker build -t $ACR_LOGIN_SERVER/frontend:latest .
+                                
+                                # Scan Docker image with Snyk
+                                snyk container test $ACR_LOGIN_SERVER/frontend:${BUILD_NUMBER} --severity-threshold=high || echo "Docker image vulnerabilities found"
+                                
+                                # Push images
+                                docker push $ACR_LOGIN_SERVER/frontend:${BUILD_NUMBER}
+                                docker push $ACR_LOGIN_SERVER/frontend:latest
+                            '''
+                        }
+                    }
+                }
             }
         }
 
