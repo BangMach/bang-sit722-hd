@@ -3,8 +3,8 @@ pipeline {
     environment {
         ACR_LOGIN_SERVER = credentials('ACR_LOGIN_SERVER')
         AZURE_CREDENTIALS = credentials('AZURE_CREDENTIALS')
-        AKS_CLUSTER_NAME = 'bang-aks-cluster'
-        AKS_RESOURCE_GROUP = 'bang-resource-group'
+        AKS_CLUSTER_NAME = 'banghdsit722-aks'
+        AKS_RESOURCE_GROUP = 'banghdsit722-rg'
         APPLICATION_INSIGHTS_KEY = credentials('APPLICATION_INSIGHTS_KEY')
         STAGING_RESOURCE_GROUP = credentials('STAGING_RESOURCE_GROUP')
         STAGING_AKS_CLUSTER = credentials('STAGING_AKS_CLUSTER')
@@ -19,11 +19,7 @@ pipeline {
     }
 
     stages {
-        stage('Checkout') {
-            steps {
-                git branch: "${params.BRANCH_NAME}", url: 'https://github.com/BangMach/bang-sit722-hd.git'
-            }
-        }
+
         stage('Azure Login') {
             steps {
                 sh 'az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant $TENANT_ID'
