@@ -1,9 +1,6 @@
 pipeline {
     agent {
-        docker {
-            image 'mcr.microsoft.com/azure-cli:2.56.0'
-            args '-u root'
-        }
+        docker 'mcr.microsoft.com/azure-cli:2.56.0'
     }
     environment {
         ACR_LOGIN_SERVER = credentials('ACR_LOGIN_SERVER')
