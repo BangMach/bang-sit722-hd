@@ -189,58 +189,52 @@ pipeline {
 
     post {
         success {
-            node {
-                script {
-                    echo "✅ Deployment to ${params.ENVIRONMENT} successful!"
-                    sh '''
-                        # Send notification (you can integrate with Slack, Teams, etc.)
-                        echo "Deployment completed successfully"
+            script {
+                echo "✅ Deployment to ${params.ENVIRONMENT} successful!"
+                sh '''
+                    # Send notification (you can integrate with Slack, Teams, etc.)
+                    echo "Deployment completed successfully"
 
-                        # Update deployment status in any tracking system
-                        kubectl get deployments -o wide
-                    '''
-                }
+                    # Update deployment status in any tracking system
+                    kubectl get deployments -o wide
+                '''
             }
         }
         failure {
-            node {
-                script {
-                    echo "❌ Deployment failed!"
-                    sh '''
-                        # Get deployment status for debugging
-                        kubectl get pods
-                        kubectl describe deployments
-                        kubectl logs --tail=50 -l app=product-service
-                    '''
+            script {
+                echo "❌ Deployment failed!"
+                sh '''
+                    # Get deployment status for debugging
+                    kubectl get pods
+                    kubectl describe deployments
+                    kubectl logs --tail=50 -l app=product-service
+                '''
 
-                    // Rollback if enabled
-                    if (params.ROLLBACK_ON_FAILURE) {
-                        echo "🔄 Rolling back deployment..."
-                        sh '''
-                            # Rollback to previous version
-                            kubectl rollout undo deployment/product-service
-                            kubectl rollout undo deployment/order-service
-                            kubectl rollout undo deployment/customer-service
-                            kubectl rollout undo deployment/frontend
-                        '''
-                    }
+                // Rollback if enabled
+                if (params.ROLLBACK_ON_FAILURE) {
+                    echo "🔄 Rolling back deployment..."
+                    sh '''
+                        # Rollback to previous version
+                        kubectl rollout undo deployment/product-service
+                        kubectl rollout undo deployment/order-service
+                        kubectl rollout undo deployment/customer-service
+                        kubectl rollout undo deployment/frontend
+                    '''
                 }
             }
         }
         always {
-            node {
-                script {
-                    sh '''
-                        # Cleanup
-                        docker system prune -f
+            script {
+                sh '''
+                    # Cleanup
+                    docker system prune -f
 
-                        # Archive deployment artifacts
-                        mkdir -p deployment-artifacts
-                        kubectl get all > deployment-artifacts/k8s-resources.txt
-                        kubectl get events --sort-by=.metadata.creationTimestamp > deployment-artifacts/events.txt
-                    '''
-                    archiveArtifacts artifacts: 'deployment-artifacts/**', allowEmptyArchive: true
-                }
+                    # Archive deployment artifacts
+                    mkdir -p deployment-artifacts
+                    kubectl get all > deployment-artifacts/k8s-resources.txt
+                    kubectl get events --sort-by=.metadata.creationTimestamp > deployment-artifacts/events.txt
+                '''
+                archiveArtifacts artifacts: 'deployment-artifacts/**', allowEmptyArchive: true
             }
         }
     }
