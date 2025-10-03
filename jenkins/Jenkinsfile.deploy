@@ -1,7 +1,5 @@
 pipeline {
-    agent {
-        docker 'mcr.microsoft.com/azure-cli:2.56.0'
-    }
+    agent any
     environment {
         ACR_LOGIN_SERVER = credentials('ACR_LOGIN_SERVER')
         AZURE_CREDENTIALS = credentials('AZURE_CREDENTIALS')
@@ -19,14 +17,22 @@ pipeline {
     }
 
     stages {
-        stage('Azure Check') {
-            steps {
-                sh 'az --version'
-            }
-        }
         stage('Azure Login') {
             steps {
-                sh 'az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant $TENANT_ID'
+                withCredentials([file(credentialsId: 'AZURE_CREDENTIALS', variable: 'AZURE_CREDENTIALS')]) {
+                    sh '''
+                        export PATH=$PATH:/usr/local/bin
+                        az --version
+                        AZURE_CREDENTIAL=$(cat $AZURE_CREDENTIALS)
+                        CLIENT_ID=$(echo $AZURE_CREDENTIAL | jq -r .clientId)
+                        CLIENT_SECRET=$(echo $AZURE_CREDENTIAL | jq -r .clientSecret)
+                        TENANT_ID=$(echo $AZURE_CREDENTIAL | jq -r .tenantId)
+                        SUBSCRIPTION_ID=$(echo $AZURE_CREDENTIAL | jq -r .subscriptionId)
+
+                        az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant $TENANT_ID
+                        az account set --subscription $SUBSCRIPTION_ID
+                    '''
+                }
             }
         }
         stage('Update Azure CLI') {
