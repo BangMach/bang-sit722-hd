@@ -1,11 +1,13 @@
 pipeline {
-    agent any
-
+    agent {
+        docker {
+            image 'mcr.microsoft.com/azure-cli:2.56.0'
+            args '-u root'
+        }
+    }
     environment {
         ACR_LOGIN_SERVER = credentials('ACR_LOGIN_SERVER')
         AZURE_CREDENTIALS = credentials('AZURE_CREDENTIALS')
-        AKS_CLUSTER_NAME = 'banghdsit722-aks'
-        AKS_RESOURCE_GROUP = 'banghdsit722-rg'
         APPLICATION_INSIGHTS_KEY = credentials('APPLICATION_INSIGHTS_KEY')
         STAGING_RESOURCE_GROUP = credentials('STAGING_RESOURCE_GROUP')
         STAGING_AKS_CLUSTER = credentials('STAGING_AKS_CLUSTER')
