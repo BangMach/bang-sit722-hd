@@ -40,6 +40,14 @@ pipeline {
         stage('Set Kubernetes Context') {
             steps {
                 sh '''
+                    # Backup existing kubeconfig if present
+                    if [ -f ~/.kube/config ]; then
+                        cp ~/.kube/config ~/.kube/config.bak
+                    fi
+                    # Remove corrupted kubeconfig if exists
+                    if grep -q $'\x00' ~/.kube/config 2>/dev/null; then
+                        rm ~/.kube/config
+                    fi
                     az aks get-credentials --resource-group $STAGING_RESOURCE_GROUP --name $STAGING_AKS_CLUSTER --overwrite-existing
                 '''
             }
@@ -101,9 +109,15 @@ pipeline {
         stage('Inject Backend IPs into Frontend main.js') {
             steps {
                 sh '''
-                    sed -i '' "s|_PRODUCT_API_URL_|http://${PRODUCT_IP}:8000|g" frontend/main.js
-                    sed -i '' "s|_ORDER_API_URL_|http://${ORDER_IP}:8001|g" frontend/main.js
-                    sed -i '' "s|_CUSTOMER_API_URL_|http://${CUSTOMER_IP}:8002|g" frontend/main.js
+                    if [[ "$OSTYPE" == "darwin"* ]]; then
+                        sed -i '' "s|_PRODUCT_API_URL_|http://${PRODUCT_IP}:8000|g" frontend/main.js
+                        sed -i '' "s|_ORDER_API_URL_|http://${ORDER_IP}:8001|g" frontend/main.js
+                        sed -i '' "s|_CUSTOMER_API_URL_|http://${CUSTOMER_IP}:8002|g" frontend/main.js
+                    else
+                        sed -i "s|_PRODUCT_API_URL_|http://${PRODUCT_IP}:8000|g" frontend/main.js
+                        sed -i "s|_ORDER_API_URL_|http://${ORDER_IP}:8001|g" frontend/main.js
+                        sed -i "s|_CUSTOMER_API_URL_|http://${CUSTOMER_IP}:8002|g" frontend/main.js
+                    fi
                 '''
             }
         }
