@@ -6,235 +6,144 @@ pipeline {
         AKS_CLUSTER_NAME = 'bang-aks-cluster'
         AKS_RESOURCE_GROUP = 'bang-resource-group'
         APPLICATION_INSIGHTS_KEY = credentials('APPLICATION_INSIGHTS_KEY')
+        STAGING_RESOURCE_GROUP = credentials('STAGING_RESOURCE_GROUP')
+        STAGING_AKS_CLUSTER = credentials('STAGING_AKS_CLUSTER')
+        AZURE_CONTAINER_REGISTRY = credentials('AZURE_CONTAINER_REGISTRY')
     }
     parameters {
         string(name: 'IMAGE_TAG', defaultValue: 'latest', description: 'Docker image tag to deploy')
         string(name: 'ENVIRONMENT', defaultValue: 'staging', description: 'Deployment environment')
         booleanParam(name: 'ROLLBACK_ON_FAILURE', defaultValue: true, description: 'Rollback deployment on failure')
+        string(name: 'BRANCH', defaultValue: 'testing', description: 'Branch to deploy')
+        booleanParam(name: 'MANUAL_TRIGGER', defaultValue: false, description: 'Manual trigger')
     }
 
     stages {
-        stage('Setup Azure CLI') {
+        stage('Checkout') {
             steps {
-                script {
-                    withCredentials([file(credentialsId: 'AZURE_CREDENTIALS', variable: 'AZURE_CREDENTIALS')]) {
-                        sh '''
-                            export PATH=$PATH:/usr/local/bin
-                            AZURE_CREDENTIAL=$(cat $AZURE_CREDENTIALS)
-                            CLIENT_ID=$(echo $AZURE_CREDENTIAL | jq -r .clientId)
-                            CLIENT_SECRET=$(echo $AZURE_CREDENTIAL | jq -r .clientSecret)
-                            TENANT_ID=$(echo $AZURE_CREDENTIAL | jq -r .tenantId)
-                            SUBSCRIPTION_ID=$(echo $AZURE_CREDENTIAL | jq -r .subscriptionId)
-
-                            az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant $TENANT_ID
-                            az account set --subscription $SUBSCRIPTION_ID
-                            az aks get-credentials --resource-group $AKS_RESOURCE_GROUP --name $AKS_CLUSTER_NAME --overwrite-existing
-                        '''
-                    }
-                }
+                git branch: "${params.BRANCH_NAME}", url: 'https://github.com/BangMach/bang-sit722-hd.git'
             }
         }
-
-        stage('ACR Login') {
+        stage('Azure Login') {
+            steps {
+                sh 'az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant $TENANT_ID'
+            }
+        }
+        stage('Update Azure CLI') {
+            steps {
+                sh 'az upgrade --yes'
+            }
+        }
+        stage('Set Kubernetes Context') {
             steps {
                 sh '''
-                    export PATH=$PATH:/usr/local/bin
-                    az acr login --name $ACR_LOGIN_SERVER
+                    az aks get-credentials --resource-group $STAGING_RESOURCE_GROUP --name $STAGING_AKS_CLUSTER --overwrite-existing
                 '''
             }
         }
-
-        stage('Deploy to AKS') {
+        stage('Substitute ACR in YAML') {
+            steps {
+                sh '''
+                    export ACR=$AZURE_CONTAINER_REGISTRY
+                    envsubst < k8s/product-service.yaml > k8s/product-service-substituted.yaml
+                    envsubst < k8s/order-service.yaml > k8s/order-service-substituted.yaml
+                    envsubst < k8s/customer-service.yaml > k8s/customer-service-substituted.yaml
+                '''
+            }
+        }
+        stage('Deploy Backend Infrastructure') {
+            steps {
+                sh '''
+                    cd k8s/
+                    kubectl apply -f configmaps.yaml
+                    kubectl apply -f secrets.yaml
+                    kubectl apply -f product-db.yaml
+                    kubectl apply -f order-db.yaml
+                    kubectl apply -f customer-db.yaml
+                '''
+            }
+        }
+        stage('Deploy Backend Microservices') {
+            steps {
+                sh '''
+                    cd k8s/
+                    kubectl apply -f product-service-substituted.yaml
+                    kubectl apply -f order-service-substituted.yaml
+                    kubectl apply -f customer-service-substituted.yaml
+                '''
+            }
+        }
+        stage('Wait for LoadBalancer IPs') {
             steps {
                 script {
-                    // Deploy all services in parallel
-                    parallel(
-                        "Deploy Product Service": {
-                            deployService('product-service', params.IMAGE_TAG, params.ENVIRONMENT)
-                        },
-                        "Deploy Order Service": {
-                            deployService('order-service', params.IMAGE_TAG, params.ENVIRONMENT)
-                        },
-                        "Deploy Customer Service": {
-                            deployService('customer-service', params.IMAGE_TAG, params.ENVIRONMENT)
-                        },
-                        "Deploy Frontend": {
-                            deployService('frontend', params.IMAGE_TAG, params.ENVIRONMENT)
+                    def getIp = { svcName ->
+                        def ip = ""
+                        for (int i = 0; i < 10; i++) {
+                            ip = sh(script: "kubectl get svc ${svcName} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
+                            if (ip) break
+                            sleep 30
                         }
-                    )
-                }
-            }
-        }
-
-        stage('Setup Observability') {
-            steps {
-                script {
-                    sh '''
-                        export PATH=$PATH:/usr/local/bin
-
-                        # Create Application Insights resources if not exists
-                        az monitor app-insights component create \
-                            --app bang-ecommerce-app \
-                            --location australiaeast \
-                            --resource-group $AKS_RESOURCE_GROUP \
-                            --application-type web \
-                            --kind web \
-                            --retention-time 90
-
-                        # Enable Azure Monitor for containers
-                        az aks enable-addons \
-                            --resource-group $AKS_RESOURCE_GROUP \
-                            --name $AKS_CLUSTER_NAME \
-                            --addons monitoring
-
-                        # Setup Log Analytics workspace
-                        az monitor diagnostic-settings create \
-                            --name diagnostics \
-                            --resource /subscriptions/$SUBSCRIPTION_ID/resourceGroups/$AKS_RESOURCE_GROUP/providers/Microsoft.ContainerService/managedClusters/$AKS_CLUSTER_NAME \
-                            --logs '[{"category": "kube-apiserver", "enabled": true}, {"category": "kube-controller-manager", "enabled": true}]' \
-                            --metrics '[{"category": "AllMetrics", "enabled": true}]' \
-                            --workspace /subscriptions/$SUBSCRIPTION_ID/resourceGroups/$AKS_RESOURCE_GROUP/providers/Microsoft.OperationalInsights/workspaces/bang-log-analytics
-                    '''
-                }
-            }
-        }
-
-        stage('Setup Auto-scaling') {
-            steps {
-                script {
-                    // Apply HPA for each service
-                    def services = ['product-service', 'order-service', 'customer-service', 'frontend']
-                    services.each { service ->
-                        sh """
-                            kubectl apply -f k8s/${service}-hpa.yaml
-                        """
+                        if (!ip) error "Failed to retrieve IP for ${svcName}"
+                        return ip
                     }
+                    env.PRODUCT_IP = getIp('product-service-w05-aks')
+                    env.ORDER_IP = getIp('order-service-w05-aks')
+                    env.CUSTOMER_IP = getIp('customer-service-w05-aks')
                 }
             }
         }
-
-        stage('Security & Vulnerability Scan') {
+        stage('Inject Backend IPs into Frontend main.js') {
             steps {
-                script {
-                    parallel(
-                        "Container Vulnerability Scan": {
-                            sh '''
-                                export PATH=$PATH:/usr/local/bin
-                                # Scan running containers for vulnerabilities
-                                kubectl get pods -o jsonpath='{.items[*].spec.containers[*].image}' | tr ' ' '\\n' | sort | uniq | while read image; do
-                                    echo "Scanning image: $image"
-                                    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-                                        aquasec/trivy:latest image --exit-code 0 --no-progress "$image" || echo "Vulnerabilities found in $image"
-                                done
-                            '''
-                        },
-                        "Runtime Security Monitoring": {
-                            sh '''
-                                # Enable Azure Defender for containers
-                                az security pricing create \
-                                    --name ContainerRegistries \
-                                    --tier Standard
-
-                                az security pricing create \
-                                    --name KubernetesService \
-                                    --tier Standard
-                            '''
-                        }
-                    )
-                }
-            }
-        }
-
-        stage('Health Checks & Validation') {
-            steps {
-                script {
-                    sh '''
-                        # Wait for deployments to be ready
-                        kubectl wait --for=condition=available --timeout=300s deployment/product-service
-                        kubectl wait --for=condition=available --timeout=300s deployment/order-service
-                        kubectl wait --for=condition=available --timeout=300s deployment/customer-service
-                        kubectl wait --for=condition=available --timeout=300s deployment/frontend
-
-                        # Run health checks
-                        echo "Running health checks..."
-                        kubectl get pods
-                        kubectl get services
-                        kubectl get ingress
-
-                        # Test service endpoints
-                        FRONTEND_IP=$(kubectl get svc frontend -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-                        echo "Frontend available at: http://$FRONTEND_IP"
-
-                        # Basic connectivity test
-                        curl -f http://$FRONTEND_IP/health || echo "Health check failed"
-                    '''
-                }
-            }
-        }
-
-        stage('Performance Testing') {
-            steps {
-                script {
-                    sh '''
-                        # Run basic load test
-                        kubectl run load-test --image=busybox --restart=Never --rm -i --tty -- sh -c "
-                            wget -qO- http://frontend/health
-                            echo 'Load test completed'
-                        "
-                    '''
-                }
-            }
-        }
-    }
-
-    post {
-        success {
-            script {
-                echo "✅ Deployment to ${params.ENVIRONMENT} successful!"
                 sh '''
-                    # Send notification (you can integrate with Slack, Teams, etc.)
-                    echo "Deployment completed successfully"
-
-                    # Update deployment status in any tracking system
-                    kubectl get deployments -o wide
+                    sed -i "s|_PRODUCT_API_URL_|http://${PRODUCT_IP}:8000|g" frontend/main.js
+                    sed -i "s|_ORDER_API_URL_|http://${ORDER_IP}:8001|g" frontend/main.js
+                    sed -i "s|_CUSTOMER_API_URL_|http://${CUSTOMER_IP}:8002|g" frontend/main.js
                 '''
             }
         }
-        failure {
-            script {
-                echo "❌ Deployment failed!"
+        stage('Build and Push Frontend Image') {
+            steps {
                 sh '''
-                    # Get deployment status for debugging
-                    kubectl get pods
-                    kubectl describe deployments
-                    kubectl logs --tail=50 -l app=product-service
+                    docker build -t $AZURE_CONTAINER_REGISTRY/frontend:latest ./frontend/
+                    docker push $AZURE_CONTAINER_REGISTRY/frontend:latest
                 '''
-
-                // Rollback if enabled
-                if (params.ROLLBACK_ON_FAILURE) {
-                    echo "🔄 Rolling back deployment..."
-                    sh '''
-                        # Rollback to previous version
-                        kubectl rollout undo deployment/product-service
-                        kubectl rollout undo deployment/order-service
-                        kubectl rollout undo deployment/customer-service
-                        kubectl rollout undo deployment/frontend
-                    '''
-                }
             }
         }
-        always {
-            script {
+        stage('Substitute ACR in Frontend YAML') {
+            steps {
                 sh '''
-                    # Cleanup
-                    docker system prune -f
-
-                    # Archive deployment artifacts
-                    mkdir -p deployment-artifacts
-                    kubectl get all > deployment-artifacts/k8s-resources.txt
-                    kubectl get events --sort-by=.metadata.creationTimestamp > deployment-artifacts/events.txt
+                    export ACR=$AZURE_CONTAINER_REGISTRY
+                    envsubst < k8s/frontend.yaml > k8s/frontend-substituted.yaml
                 '''
-                archiveArtifacts artifacts: 'deployment-artifacts/**', allowEmptyArchive: true
+            }
+        }
+        stage('Deploy Frontend to AKS') {
+            steps {
+                sh '''
+                    cd k8s/
+                    kubectl apply -f frontend-substituted.yaml
+                '''
+            }
+        }
+        stage('Wait for Manual Testing') {
+            steps {
+                sh 'sleep 120'
+            }
+        }
+        stage('Destroy Staging Environment') {
+            steps {
+                sh '''
+                    cd k8s/
+                    kubectl delete -f configmaps.yaml
+                    kubectl delete -f secrets.yaml
+                    kubectl delete -f product-db.yaml
+                    kubectl delete -f order-db.yaml
+                    kubectl delete -f customer-db.yaml
+                    kubectl delete -f order-service.yaml
+                    kubectl delete -f product-service.yaml
+                    kubectl delete -f customer-service.yaml
+                    kubectl delete -f frontend.yaml
+                '''
             }
         }
     }

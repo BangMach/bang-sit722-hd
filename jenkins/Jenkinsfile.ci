@@ -295,4 +295,17 @@ pipeline {
         }
         // ...other stages (build, push, deploy, etc.)
     }
+    post {
+        success {
+            echo '🎉 CI pipeline completed successfully!'
+            // Trigger CD pipeline (adjust job name if needed)
+            build job: 'CD-staging-auto-trigger-pipeline', 
+                parameters: [
+                    string(name: 'BRANCH', value: "${params.BRANCH_NAME}"),
+                    string(name: 'IMAGE_TAG', value: "${BUILD_NUMBER}"),
+                    string(name: 'ENVIRONMENT', value: 'staging')
+                ],
+                wait: false
+        }
+    }
 }
