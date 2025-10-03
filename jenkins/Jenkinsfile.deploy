@@ -44,9 +44,12 @@ pipeline {
                     if [ -f ~/.kube/config ]; then
                         cp ~/.kube/config ~/.kube/config.bak
                     fi
-                    # Remove corrupted kubeconfig if exists
-                    if grep -q $'\x00' ~/.kube/config 2>/dev/null; then
-                        rm ~/.kube/config
+                    # Remove corrupted kubeconfig if contains null bytes
+                    if [ -f ~/.kube/config ] && tr -d '\0' < ~/.kube/config | cmp -s ~/.kube/config -; then
+                        # No null bytes, do nothing
+                        :
+                    else
+                        rm -f ~/.kube/config
                     fi
                     az aks get-credentials --resource-group $STAGING_RESOURCE_GROUP --name $STAGING_AKS_CLUSTER --overwrite-existing
                 '''
