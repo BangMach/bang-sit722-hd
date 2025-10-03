@@ -299,7 +299,7 @@ pipeline {
         success {
             echo '🎉 CI pipeline completed successfully!'
             // Trigger CD pipeline (adjust job name if needed)
-            build job: 'CD-staging-auto-trigger-pipeline', 
+            build job: 'CD-pipeline', 
                 parameters: [
                     string(name: 'BRANCH', value: "${params.BRANCH_NAME}"),
                     string(name: 'IMAGE_TAG', value: "${BUILD_NUMBER}"),
