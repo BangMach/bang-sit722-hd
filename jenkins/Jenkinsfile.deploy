@@ -37,11 +37,6 @@ pipeline {
                 }
             }
         }
-        stage('Update Azure CLI') {
-            steps {
-                sh 'az upgrade --yes'
-            }
-        }
         stage('Set Kubernetes Context') {
             steps {
                 sh '''
