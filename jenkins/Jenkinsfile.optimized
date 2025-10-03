@@ -9,6 +9,7 @@ pipeline {
         POSTGRES_HOST = 'localhost'
         POSTGRES_USER = 'postgres'
         POSTGRES_PASSWORD = 'postgres'
+        
     }
     
     parameters {

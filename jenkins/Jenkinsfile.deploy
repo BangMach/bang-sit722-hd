@@ -7,6 +7,8 @@ pipeline {
         STAGING_RESOURCE_GROUP = credentials('STAGING_RESOURCE_GROUP')
         STAGING_AKS_CLUSTER = credentials('STAGING_AKS_CLUSTER')
         AZURE_CONTAINER_REGISTRY = credentials('AZURE_CONTAINER_REGISTRY')
+        PATH = "/usr/local/bin:$PATH"
+
     }
     parameters {
         string(name: 'IMAGE_TAG', defaultValue: 'latest', description: 'Docker image tag to deploy')
