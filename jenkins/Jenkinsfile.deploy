@@ -168,7 +168,7 @@ pipeline {
             }
             steps {
                 echo 'Deploying to production environment...'
-                // Add your production deployment steps here
+                // Add your production deployment steps heres
                 // For example, set production resource group, AKS cluster, etc.
                 sh '''
                     # Example: set production variables
