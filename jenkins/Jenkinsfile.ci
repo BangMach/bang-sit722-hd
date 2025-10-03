@@ -16,7 +16,7 @@ pipeline {
     stages {
         stage('Checkout & Setup') {
             steps {
-                git branch: "${params.BRANCH_NAME}", url: 'https://github.com/BangMach/8.2CDevSecOps3.git'
+                git branch: "${params.BRANCH_NAME}", url: 'https://github.com/BangMach/bang-sit722-hd.git'
                 
                 // Cache dependencies
                 sh '''

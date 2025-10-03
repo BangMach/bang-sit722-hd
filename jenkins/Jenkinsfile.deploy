@@ -23,7 +23,6 @@ pipeline {
             steps {
                 withCredentials([file(credentialsId: 'AZURE_CREDENTIALS', variable: 'AZURE_CREDENTIALS')]) {
                     sh '''
-                        export PATH=$PATH:/usr/local/bin
                         az --version
                         AZURE_CREDENTIAL=$(cat $AZURE_CREDENTIALS)
                         CLIENT_ID=$(echo $AZURE_CREDENTIAL | jq -r .clientId)
@@ -155,6 +154,29 @@ pipeline {
                     kubectl delete -f product-service.yaml
                     kubectl delete -f customer-service.yaml
                     kubectl delete -f frontend.yaml
+                '''
+            }
+        }
+        stage('Deploy to Production') {
+            when {
+                allOf {
+                    expression { 
+                        // Deploy only if branch is main and build is not a PR (i.e., merged)
+                        env.BRANCH == 'main' && !env.CHANGE_ID
+                    }
+                }
+            }
+            steps {
+                echo 'Deploying to production environment...'
+                // Add your production deployment steps here
+                // For example, set production resource group, AKS cluster, etc.
+                sh '''
+                    # Example: set production variables
+                    export RESOURCE_GROUP=$PRODUCTION_RESOURCE_GROUP
+                    export AKS_CLUSTER=$PRODUCTION_AKS_CLUSTER
+                    # Repeat deployment steps for production
+                    az aks get-credentials --resource-group $RESOURCE_GROUP --name $AKS_CLUSTER --overwrite-existing
+                    # ...repeat apply steps for production manifests...
                 '''
             }
         }
