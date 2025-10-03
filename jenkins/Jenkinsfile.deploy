@@ -1,5 +1,6 @@
 pipeline {
     agent any
+
     environment {
         ACR_LOGIN_SERVER = credentials('ACR_LOGIN_SERVER')
         AZURE_CREDENTIALS = credentials('AZURE_CREDENTIALS')
@@ -19,6 +20,13 @@ pipeline {
     }
 
     stages {
+
+
+        stage('Azure Check') {
+            steps {
+                sh 'az --version '
+            }
+        }
 
         stage('Azure Login') {
             steps {
@@ -78,57 +86,52 @@ pipeline {
                             ip = sh(script: "kubectl get svc ${svcName} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
                             if (ip) break
                             sleep 30
-                        }
-                        if (!ip) error "Failed to retrieve IP for ${svcName}"
-                        return ip
-                    }
-                    env.PRODUCT_IP = getIp('product-service-w05-aks')
                     env.ORDER_IP = getIp('order-service-w05-aks')
-                    env.CUSTOMER_IP = getIp('customer-service-w05-aks')
-                }
-            }
-        }
-        stage('Inject Backend IPs into Frontend main.js') {
-            steps {
+                    env.CUSTOMER_IP = getIp('customer-service-w05-aks')Name}"
+                }       return ip
+            }       }
+        }           env.PRODUCT_IP = getIp('product-service-w05-aks')
+        stage('Inject Backend IPs into Frontend main.js') {-aks')
+            steps { env.CUSTOMER_IP = getIp('customer-service-w05-aks')
                 sh '''
                     sed -i "s|_PRODUCT_API_URL_|http://${PRODUCT_IP}:8000|g" frontend/main.js
                     sed -i "s|_ORDER_API_URL_|http://${ORDER_IP}:8001|g" frontend/main.js
                     sed -i "s|_CUSTOMER_API_URL_|http://${CUSTOMER_IP}:8002|g" frontend/main.js
                 '''
-            }
-        }
-        stage('Build and Push Frontend Image') {
-            steps {
+            }   sh '''
+        }           sed -i "s|_PRODUCT_API_URL_|http://${PRODUCT_IP}:8000|g" frontend/main.js
+        stage('Build and Push Frontend Image') {tp://${ORDER_IP}:8001|g" frontend/main.js
+            steps { sed -i "s|_CUSTOMER_API_URL_|http://${CUSTOMER_IP}:8002|g" frontend/main.js
                 sh '''
                     docker build -t $AZURE_CONTAINER_REGISTRY/frontend:latest ./frontend/
                     docker push $AZURE_CONTAINER_REGISTRY/frontend:latest
-                '''
-            }
-        }
-        stage('Substitute ACR in Frontend YAML') {
-            steps {
+                '''d and Push Frontend Image') {
+            }teps {
+        }       sh '''
+        stage('Substitute ACR in Frontend YAML') {ER_REGISTRY/frontend:latest ./frontend/
+            steps { docker push $AZURE_CONTAINER_REGISTRY/frontend:latest
                 sh '''
                     export ACR=$AZURE_CONTAINER_REGISTRY
                     envsubst < k8s/frontend.yaml > k8s/frontend-substituted.yaml
-                '''
-            }
-        }
-        stage('Deploy Frontend to AKS') {
-            steps {
+                '''titute ACR in Frontend YAML') {
+            }teps {
+        }       sh '''
+        stage('Deploy Frontend to AKS') {TAINER_REGISTRY
+            steps { envsubst < k8s/frontend.yaml > k8s/frontend-substituted.yaml
                 sh '''
                     cd k8s/
                     kubectl apply -f frontend-substituted.yaml
-                '''
-            }
-        }
+                '''oy Frontend to AKS') {
+            }teps {
+        }       sh '''
         stage('Wait for Manual Testing') {
-            steps {
+            steps { kubectl apply -f frontend-substituted.yaml
                 sh 'sleep 120'
             }
         }
         stage('Destroy Staging Environment') {
             steps {
-                sh '''
+                sh '''eep 120'
                     cd k8s/
                     kubectl delete -f configmaps.yaml
                     kubectl delete -f secrets.yaml
@@ -139,25 +142,30 @@ pipeline {
                     kubectl delete -f product-service.yaml
                     kubectl delete -f customer-service.yaml
                     kubectl delete -f frontend.yaml
+                ''' kubectl delete -f customer-db.yaml
+            }       kubectl delete -f order-service.yaml
+        }           kubectl delete -f product-service.yaml
+    }               kubectl delete -f customer-service.yaml
+}                   kubectl delete -f frontend.yaml
                 '''
-            }
-        }
-    }
-}
-
 // Helper function to deploy a service
 def deployService(String serviceName, String imageTag, String environment) {
     sh """
         # Update image in deployment
         sed -i 's|image:.*|image: ${ACR_LOGIN_SERVER}/${serviceName}:${imageTag}|g' k8s/${serviceName}.yaml
-
-        # Apply Kubernetes manifests
+// Helper function to deploy a service
+        # Apply Kubernetes manifests, String imageTag, String environment) {
         kubectl apply -f k8s/${serviceName}.yaml
         kubectl apply -f k8s/${serviceName}-configmap.yaml
-
+        sed -i 's|image:.*|image: ${ACR_LOGIN_SERVER}/${serviceName}:${imageTag}|g' k8s/${serviceName}.yaml
         # Set environment-specific configurations
         kubectl set env deployment/${serviceName} ENVIRONMENT=${environment}
         kubectl set env deployment/${serviceName} APPLICATION_INSIGHTS_KEY=\${APPLICATION_INSIGHTS_KEY}
+        kubectl apply -f k8s/${serviceName}-configmap.yaml
+        # Wait for rollout to complete
+        kubectl rollout status deployment/${serviceName} --timeout=300s
+    """ kubectl set env deployment/${serviceName} ENVIRONMENT=${environment}
+}       kubectl set env deployment/${serviceName} APPLICATION_INSIGHTS_KEY=\${APPLICATION_INSIGHTS_KEY}
 
         # Wait for rollout to complete
         kubectl rollout status deployment/${serviceName} --timeout=300s
