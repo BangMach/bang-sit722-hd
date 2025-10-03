@@ -40,17 +40,6 @@ pipeline {
         stage('Set Kubernetes Context') {
             steps {
                 sh '''
-                    # Backup existing kubeconfig if present
-                    if [ -f ~/.kube/config ]; then
-                        cp ~/.kube/config ~/.kube/config.bak
-                    fi
-                    # Remove corrupted kubeconfig if contains null bytes
-                    if [ -f ~/.kube/config ] && tr -d '\0' < ~/.kube/config | cmp -s ~/.kube/config -; then
-                        # No null bytes, do nothing
-                        :
-                    else
-                        rm -f ~/.kube/config
-                    fi
                     az aks get-credentials --resource-group $STAGING_RESOURCE_GROUP --name $STAGING_AKS_CLUSTER --overwrite-existing
                 '''
             }
