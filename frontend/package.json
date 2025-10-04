@@ -10,7 +10,7 @@
     "snyk:test": "snyk test",
     "snyk:monitor": "snyk monitor",
     "security:scan": "snyk test && snyk code test",
-    "lint": "eslint main.js",
+    "lint": "eslint .",
     "build": "echo 'Static files - no build needed'",
     "serve": "http-server -p 3000"
   },
@@ -22,7 +22,8 @@
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
     "jest-junit": "^16.0.0",
-    "snyk": "^1.1245.0"
+    "snyk": "^1.1245.0",
+    "husky": "^8.0.0"
   },
   "jest": {
     "testEnvironment": "jsdom",
