@@ -15,6 +15,14 @@ resource "aws_eks_cluster" "prod_eks" {
     subnet_ids = var.subnet_ids
   }
 }
+resource "aws_ecr_repository" "prod_ecr" {
+  name = "prod-app-ecr"
+  image_tag_mutability = "MUTABLE"
+  tags = {
+    Environment = "production"
+  }
+}
+
 
 output "eks_cluster_name" {
   value = aws_eks_cluster.prod_eks.name
@@ -22,4 +30,9 @@ output "eks_cluster_name" {
 
 output "s3_bucket_name" {
   value = aws_s3_bucket.prod_bucket.bucket
+}
+
+
+output "ecr_repository_url" {
+  value = aws_ecr_repository.prod_ecr.repository_url
 }
