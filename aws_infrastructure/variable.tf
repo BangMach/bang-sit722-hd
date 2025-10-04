@@ -1,11 +1,2 @@
-variable "prefix" {
-  description = "Prefix for all resource names"
-  type        = string
-  default     = "bangdsit722"
-}
-
-variable "region" {
-  description = "AWS region"
-  type        = string
-  default     = "ap-southeast-2"
-}
+// Remove this file entirely if all variables are already declared in variables.tf
+// If you need to keep this file, ensure only unique variables are declared here.
