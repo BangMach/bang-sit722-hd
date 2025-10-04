@@ -95,10 +95,10 @@ pipeline {
         stage('Wait for Rollout') {
             steps {
                 sh '''
-                    kubectl rollout status deployment/product-service --timeout=300s
-                    kubectl rollout status deployment/order-service --timeout=300s
-                    kubectl rollout status deployment/customer-service --timeout=300s
-                    kubectl rollout status deployment/frontend --timeout=300s
+                    kubectl rollout status deployment/product-service-w05-aks --timeout=300s
+                    kubectl rollout status deployment/order-service-w05-aks --timeout=300s
+                    kubectl rollout status deployment/customer-service-w05-aks --timeout=300s
+                    kubectl rollout status deployment/frontend-w05-aks --timeout=300s
                 '''
             }
         }
