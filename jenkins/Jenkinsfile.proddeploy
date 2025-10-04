@@ -16,7 +16,7 @@ pipeline {
         booleanParam(name: 'MANUAL_TRIGGER', defaultValue: false, description: 'Manual trigger')
     }
     triggers {
-        // Poll SCM for changes on main branch (or use webhook)s
+        // Poll SCM for changes on main branch (or use webhook)
         pollSCM('H/5 * * * *')
     }
     stages {
@@ -45,7 +45,7 @@ pipeline {
             }
         }
         stage('Set Kubernetes Context') {
-            steps {kubectl rollout status deployment/product-service --timeout=300s
+            steps {
                 sh '''
                     az aks get-credentials --resource-group $PRODUCTION_RESOURCE_GROUP --name $PRODUCTION_AKS_CLUSTER --overwrite-existing
                 '''
