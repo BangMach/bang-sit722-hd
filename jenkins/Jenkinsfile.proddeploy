@@ -16,7 +16,7 @@ pipeline {
         booleanParam(name: 'MANUAL_TRIGGER', defaultValue: false, description: 'Manual trigger')
     }
     triggers {
-        // Poll SCM for changes on main branch (or use webhook)
+        // Poll SCM for changes on main branch (or use webhook)s
         pollSCM('H/5 * * * *')
     }
     stages {
