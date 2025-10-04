@@ -14,19 +14,19 @@ pipeline {
     }
 
     stages {
-        stage('Checkout & Setup') {
+        stage('Checkout') {
             steps {
-                git branch: "${params.BRANCH_NAME}", url: 'https://github.com/BangMach/bang-sit722-hd.git'
-                
-                // Cache dependencies
-                sh '''
-                    python3 --version
-                    pip3 --version
-                    docker-compose --version
-                    
-                    # Create cache directories
-                    mkdir -p ~/.npm ~/.cache/pip
-                '''
+                        git branch: "${params.BRANCH_NAME}", url: 'https://github.com/BangMach/bang-sit722-hd.git'
+    }
+        }
+        
+        stage('Install Tools') {
+            steps {
+            sh '''
+                python3 --version
+                pip3 --version
+                docker-compose --version
+            '''
             }
         }
         
@@ -43,15 +43,20 @@ pipeline {
             steps {
                 sh '''
                     pip3 install --upgrade pip
-                    # Install dependencies in parallel using background processes
                     for req in backend/*/requirements.txt; do
-                        pip3 install -r "$req" &
+                        pip3 install -r "$req"
                     done
-                    wait
                     pip3 install pytest httpx
                 '''
             }
         }
+
+        stage('Run Tests: Product Service') {
+            steps {
+                sh '''
+                    cd backend/product_service
+                    python3 -m pytest tests --maxfail=1 --disable-warnings -q
+       
         
         stage('Snyk Auth') {
             steps {
@@ -62,69 +67,24 @@ pipeline {
                     snyk auth $SNYK_TOKEN || echo "Snyk auth failed - continuing without auth"
                 '''
             }
+        }         '''
+            }
         }
-
-        stage('Test Services in Parallel') {
-            parallel {
-                stage('Product Service Tests') {
-                    steps {
-                        sh '''
-                            cd backend/product_service
-                            python3 -m pytest tests --maxfail=1 --disable-warnings -q --junitxml=test-results.xml
-                        '''
-                    }
-                    post {
-                        always {
-                            archiveArtifacts artifacts: 'backend/product_service/test-results.xml', allowEmptyArchive: true
-                        }
-                    }
-                }
-                
-                stage('Order Service Tests') {
-                    steps {
-                        sh '''
-                            cd backend/order_service
-                            python3 -m pytest tests --maxfail=1 --disable-warnings -q --junitxml=test-results.xml
-                        '''
-                    }
-                    post {
-                        always {
-                            archiveArtifacts artifacts: 'backend/order_service/test-results.xml', allowEmptyArchive: true
-                        }
-                    }
-                }
-                
-                stage('Customer Service Tests') {
-                    steps {
-                        sh '''
-                            cd backend/customer_service
-                            python3 -m pytest tests --maxfail=1 --disable-warnings -q --junitxml=test-results.xml
-                        '''
-                    }
-                    post {
-                        always {
-                            archiveArtifacts artifacts: 'backend/customer_service/test-results.xml', allowEmptyArchive: true
-                        }
-                    }
-                }
-                
-                stage('Frontend Tests') {
-                    steps {
-                        script {
-                            sh '''
-                                cd frontend
-                                npm install
-                                npm test -- --coverage --watchAll=false --maxWorkers=2
-                            '''
-                        }
-                    }
-                    post {
-                        always {
-                            archiveArtifacts artifacts: 'frontend/coverage/junit.xml', allowEmptyArchive: true
-                            archiveArtifacts artifacts: 'frontend/coverage/lcov-report/**', allowEmptyArchive: true
-                        }
-                    }
-                }
+        
+        stage('Run Tests: Order Service') {
+            steps {
+                sh '''
+                    cd backend/order_service
+                    python3 -m pytest tests --maxfail=1 --disable-warnings -q
+                '''
+            }
+        }
+        stage('Run Tests: Customer Service') {
+            steps {
+                sh '''
+                    cd backend/customer_service
+                    python3 -m pytest tests --maxfail=1 --disable-warnings -q
+                '''
             }
         }
 
@@ -148,30 +108,24 @@ pipeline {
                         npm install
                     '''
                     
-                    // Run frontend unit tests
+                    // Run frontend unit tests and save JUnit results
                     sh '''
                         cd frontend
-                        npm test -- --coverage --watchAll=false
+                        npm test -- --coverage --watchAll=false --ci --reporters=default --reporters=jest-junit
+                        # Jest JUnit output is usually at frontend/junit.xml or frontend/coverage/junit.xml
                     '''
                     
-                    // Run Snyk security scanning
+                    // Run npm audit and save results
                     sh '''
                         cd frontend
-                        # Install Snyk globally if not available
-                        if ! command -v snyk &> /dev/null; then
-                            npm install -g snyk
-                        fi
-                        
-                        # Authenticate with Snyk (you need to set SNYK_TOKEN as Jenkins credential)
-                        snyk auth $SNYK_TOKEN || echo "Snyk auth failed - continuing without auth"
-                        
-                        # Test for vulnerabilities
-                        snyk test --severity-threshold=high || echo "Snyk found vulnerabilities"
-                        
-                        # Test for code quality issues
-                        snyk code test || echo "Snyk code analysis completed"
-                        
-                        # Monitor project (optional - for continuous monitoring)
+                        npm audit --json > npm-audit.json || true
+                    '''
+                    
+                    // Run Snyk security scanning and save results
+                    sh '''
+                        cd frontend
+                        snyk test --severity-threshold=high --json > snyk-results.json || echo "Snyk found vulnerabilities"
+                        snyk code test --json > snyk-code-results.json || echo "Snyk code analysis completed"
                         snyk monitor || echo "Snyk monitoring setup failed"
                     '''
                 }
@@ -181,6 +135,10 @@ pipeline {
                     // Archive test results and coverage reports
                     archiveArtifacts artifacts: 'frontend/coverage/junit.xml', allowEmptyArchive: true
                     archiveArtifacts artifacts: 'frontend/coverage/lcov-report/**', allowEmptyArchive: true
+                    // Archive npm audit and Snyk results
+                    archiveArtifacts artifacts: 'frontend/npm-audit.json', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'frontend/snyk-results.json', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'frontend/snyk-code-results.json', allowEmptyArchive: true
                 }
             }
         }
@@ -305,18 +263,5 @@ pipeline {
             }
         }
         // ...other stages (build, push, deploy, etc.)
-    }
-    post {
-        success {
-            echo '🎉 CI pipeline completed successfully!'
-            // Trigger CD pipeline (adjust job name if needed)
-            build job: 'CD-pipeline', 
-                parameters: [
-                    string(name: 'BRANCH', value: "${params.BRANCH_NAME}"),
-                    string(name: 'IMAGE_TAG', value: "${BUILD_NUMBER}"),
-                    string(name: 'ENVIRONMENT', value: 'staging')
-                ],
-                wait: false
-        }
     }
 }

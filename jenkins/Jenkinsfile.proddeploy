@@ -1,0 +1,125 @@
+pipeline {
+    agent any
+    environment {
+        ACR_LOGIN_SERVER = credentials('ACR_LOGIN_SERVER')
+        AZURE_CREDENTIALS = credentials('AZURE_CREDENTIALS')
+        APPLICATION_INSIGHTS_KEY = credentials('APPLICATION_INSIGHTS_KEY')
+        PRODUCTION_RESOURCE_GROUP = credentials('PRODUCTION_RESOURCE_GROUP')
+        PRODUCTION_AKS_CLUSTER = credentials('PRODUCTION_AKS_CLUSTER')
+        AZURE_CONTAINER_REGISTRY = credentials('AZURE_CONTAINER_REGISTRY')
+        PATH = "/usr/local/bin:$PATH"
+    }
+    parameters {
+        string(name: 'IMAGE_TAG', defaultValue: 'latest', description: 'Docker image tag to deploy')
+        string(name: 'ENVIRONMENT', defaultValue: 'production', description: 'Deployment environment')
+        string(name: 'BRANCH', defaultValue: 'main', description: 'Branch to deploy')
+        booleanParam(name: 'MANUAL_TRIGGER', defaultValue: false, description: 'Manual trigger')
+    }
+    triggers {
+        // Poll SCM for changes on main branch (or use webhook)
+        pollSCM('H/5 * * * *')
+    }
+    stages {
+        stage('Checkout') {
+            when {
+                branch 'main'
+            }
+            steps {
+                git branch: "${params.BRANCH}", url: 'https://github.com/BangMach/bang-sit722-hd.git'
+            }
+        }
+        stage('Azure Login') {
+            steps {
+                withCredentials([file(credentialsId: 'AZURE_CREDENTIALS', variable: 'AZURE_CREDENTIALS')]) {
+                    sh '''
+                        az --version
+                        AZURE_CREDENTIAL=$(cat $AZURE_CREDENTIALS)
+                        CLIENT_ID=$(echo $AZURE_CREDENTIAL | jq -r .clientId)
+                        CLIENT_SECRET=$(echo $AZURE_CREDENTIAL | jq -r .clientSecret)
+                        TENANT_ID=$(echo $AZURE_CREDENTIAL | jq -r .tenantId)
+                        SUBSCRIPTION_ID=$(echo $AZURE_CREDENTIAL | jq -r .subscriptionId)
+                        az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant $TENANT_ID
+                        az account set --subscription $SUBSCRIPTION_ID
+                    '''
+                }
+            }
+        }
+        stage('Set Kubernetes Context') {
+            steps {
+                sh '''
+                    az aks get-credentials --resource-group $PRODUCTION_RESOURCE_GROUP --name $PRODUCTION_AKS_CLUSTER --overwrite-existing
+                '''
+            }
+        }
+        stage('Substitute ACR in YAML') {
+            steps {
+                sh '''
+                    export ACR=$AZURE_CONTAINER_REGISTRY
+                    envsubst < k8s/product-service.yaml > k8s/product-service-prod.yaml
+                    envsubst < k8s/order-service.yaml > k8s/order-service-prod.yaml
+                    envsubst < k8s/customer-service.yaml > k8s/customer-service-prod.yaml
+                    envsubst < k8s/frontend.yaml > k8s/frontend-prod.yaml
+                '''
+            }
+        }
+        stage('Deploy Backend Infrastructure') {
+            steps {
+                sh '''
+                    cd k8s/
+                    kubectl apply -f configmaps.yaml
+                    kubectl apply -f secrets.yaml
+                    kubectl apply -f product-db.yaml
+                    kubectl apply -f order-db.yaml
+                    kubectl apply -f customer-db.yaml
+                '''
+            }
+        }
+        stage('Deploy Backend Microservices') {
+            steps {
+                sh '''
+                    cd k8s/
+                    kubectl apply -f product-service-prod.yaml
+                    kubectl apply -f order-service-prod.yaml
+                    kubectl apply -f customer-service-prod.yaml
+                '''
+            }
+        }
+        stage('Deploy Frontend to AKS') {
+            steps {
+                sh '''
+                    cd k8s/
+                    kubectl apply -f frontend-prod.yaml
+                '''
+            }
+        }
+        stage('Wait for Rollout') {
+            steps {
+                sh '''
+                    kubectl rollout status deployment/product-service --timeout=300s
+                    kubectl rollout status deployment/order-service --timeout=300s
+                    kubectl rollout status deployment/customer-service --timeout=300s
+                    kubectl rollout status deployment/frontend --timeout=300s
+                '''
+            }
+        }
+        stage('Health Checks & Monitoring') {
+            steps {
+                sh '''
+                    kubectl get pods
+                    kubectl get services
+                    kubectl get hpa
+                    # Optionally check Application Insights
+                    az monitor app-insights component show --app $APPLICATION_INSIGHTS_KEY --resource-group $PRODUCTION_RESOURCE_GROUP
+                '''
+            }
+        }
+    }
+    post {
+        success {
+            echo '🎉 Production deployment completed successfully!'
+        }
+        failure {
+            echo '❌ Production deployment failed - check logs for details'
+        }
+    }
+}
