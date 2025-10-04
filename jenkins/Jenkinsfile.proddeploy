@@ -2,7 +2,7 @@ pipeline {
     agent any
     environment {
         ACR_LOGIN_SERVER = credentials('ACR_LOGIN_SERVER')
-        AZURE_CREDENTIALS = credentials('AZURE_CREDENTIALS')
+        AZURE_CREDENTIALS_PROD = credentials('AZURE_CREDENTIALS_PROD')
         APPLICATION_INSIGHTS_KEY = credentials('APPLICATION_INSIGHTS_KEY')
         PRODUCTION_RESOURCE_GROUP = credentials('PRODUCTION_RESOURCE_GROUP')
         PRODUCTION_AKS_CLUSTER = credentials('PRODUCTION_AKS_CLUSTER')
@@ -30,10 +30,10 @@ pipeline {
         }
         stage('Azure Login') {
             steps {
-                withCredentials([file(credentialsId: 'AZURE_CREDENTIALS', variable: 'AZURE_CREDENTIALS')]) {
+                withCredentials([file(credentialsId: 'AZURE_CREDENTIALS_PROD', variable: 'AZURE_CREDENTIALS_PROD')]) {
                     sh '''
                         az --version
-                        AZURE_CREDENTIAL=$(cat $AZURE_CREDENTIALS)
+                        AZURE_CREDENTIAL=$(cat $AZURE_CREDENTIALS_PROD)
                         CLIENT_ID=$(echo $AZURE_CREDENTIAL | jq -r .clientId)
                         CLIENT_SECRET=$(echo $AZURE_CREDENTIAL | jq -r .clientSecret)
                         TENANT_ID=$(echo $AZURE_CREDENTIAL | jq -r .tenantId)
