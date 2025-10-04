@@ -1,0 +1,203 @@
+pipeline {
+    agent any
+    environment {
+        ACR_LOGIN_SERVER = credentials('ACR_LOGIN_SERVER')
+        AZURE_CREDENTIALS = credentials('AZURE_CREDENTIALS')
+        APPLICATION_INSIGHTS_KEY = credentials('APPLICATION_INSIGHTS_KEY')
+        STAGING_RESOURCE_GROUP = credentials('STAGING_RESOURCE_GROUP')
+        STAGING_AKS_CLUSTER = credentials('STAGING_AKS_CLUSTER')
+        AZURE_CONTAINER_REGISTRY = credentials('AZURE_CONTAINER_REGISTRY')
+        PATH = "/usr/local/bin:$PATH"
+
+    }
+    parameters {
+        string(name: 'IMAGE_TAG', defaultValue: 'latest', description: 'Docker image tag to deploy')
+        string(name: 'ENVIRONMENT', defaultValue: 'staging', description: 'Deployment environment')
+        booleanParam(name: 'ROLLBACK_ON_FAILURE', defaultValue: true, description: 'Rollback deployment on failure')
+        string(name: 'BRANCH', defaultValue: 'testing', description: 'Branch to deploy')
+        booleanParam(name: 'MANUAL_TRIGGER', defaultValue: false, description: 'Manual trigger')
+    }
+
+    stages {
+        stage('Azure Login') {
+            steps {
+                withCredentials([file(credentialsId: 'AZURE_CREDENTIALS', variable: 'AZURE_CREDENTIALS')]) {
+                    sh '''
+                        az --version
+                        AZURE_CREDENTIAL=$(cat $AZURE_CREDENTIALS)
+                        CLIENT_ID=$(echo $AZURE_CREDENTIAL | jq -r .clientId)
+                        CLIENT_SECRET=$(echo $AZURE_CREDENTIAL | jq -r .clientSecret)
+                        TENANT_ID=$(echo $AZURE_CREDENTIAL | jq -r .tenantId)
+                        SUBSCRIPTION_ID=$(echo $AZURE_CREDENTIAL | jq -r .subscriptionId)
+
+                        az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant $TENANT_ID
+                        az account set --subscription $SUBSCRIPTION_ID
+                    '''
+                }
+            }
+        }
+        stage('Set Kubernetes Context') {
+            steps {
+                sh '''
+                    az aks get-credentials --resource-group $STAGING_RESOURCE_GROUP --name $STAGING_AKS_CLUSTER --overwrite-existing
+                '''
+            }
+        }
+        stage('Substitute ACR in YAML') {
+            steps {
+                sh '''
+                    export ACR=$AZURE_CONTAINER_REGISTRY
+                    envsubst < k8s/product-service.yaml > k8s/product-service-substituted.yaml
+                    envsubst < k8s/order-service.yaml > k8s/order-service-substituted.yaml
+                    envsubst < k8s/customer-service.yaml > k8s/customer-service-substituted.yaml
+                '''
+            }
+        }
+        stage('Deploy Backend Infrastructure') {
+            steps {
+                sh '''
+                    cd k8s/
+                    kubectl apply -f configmaps.yaml
+                    kubectl apply -f secrets.yaml
+                    kubectl apply -f product-db.yaml
+                    kubectl apply -f order-db.yaml
+                    kubectl apply -f customer-db.yaml
+                '''
+            }
+        }
+        stage('Deploy Backend Microservices') {
+            steps {
+                sh '''
+                    cd k8s/
+                    kubectl apply -f product-service-substituted.yaml
+                    kubectl apply -f order-service-substituted.yaml
+                    kubectl apply -f customer-service-substituted.yaml
+                '''
+            }
+        }
+        stage('Wait for LoadBalancer IPs') {
+            steps {
+                script {
+                    def getIp = { svcName ->
+                        def ip = ""
+                        for (int i = 0; i < 10; i++) {
+                            ip = sh(script: "kubectl get svc ${svcName} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'", returnStdout: true).trim()
+                            if (ip) break
+                            sleep 30
+                        }
+                        if (!ip) error "Failed to retrieve IP for ${svcName}"
+                        return ip
+                    }
+                    def productIp = getIp('product-service-w05-aks')
+                    def orderIp = getIp('order-service-w05-aks')
+                    def customerIp = getIp('customer-service-w05-aks')
+                    env.PRODUCT_IP = productIp
+                    env.ORDER_IP = orderIp
+                    env.CUSTOMER_IP = customerIp
+                }
+            }
+        }
+        stage('Inject Backend IPs into Frontend main.js') {
+            steps {
+                sh '''
+                    if [[ "$OSTYPE" == "darwin"* ]]; then
+                        sed -i '' "s|_PRODUCT_API_URL_|http://${PRODUCT_IP}:8000|g" frontend/main.js
+                        sed -i '' "s|_ORDER_API_URL_|http://${ORDER_IP}:8001|g" frontend/main.js
+                        sed -i '' "s|_CUSTOMER_API_URL_|http://${CUSTOMER_IP}:8002|g" frontend/main.js
+                    else
+                        sed -i "s|_PRODUCT_API_URL_|http://${PRODUCT_IP}:8000|g" frontend/main.js
+                        sed -i "s|_ORDER_API_URL_|http://${ORDER_IP}:8001|g" frontend/main.js
+                        sed -i "s|_CUSTOMER_API_URL_|http://${CUSTOMER_IP}:8002|g" frontend/main.js
+                    fi
+                '''
+            }
+        }
+        stage('Build and Push Frontend Image') {
+            steps {
+                sh '''
+                    docker build -t $AZURE_CONTAINER_REGISTRY/frontend:latest ./frontend/
+                    docker push $AZURE_CONTAINER_REGISTRY/frontend:latest
+                '''
+            }
+        }
+        stage('Substitute ACR in Frontend YAML') {
+            steps {
+                sh '''
+                    export ACR=$AZURE_CONTAINER_REGISTRY
+                    envsubst < k8s/frontend.yaml > k8s/frontend-substituted.yaml
+                '''
+            }
+        }
+        stage('Deploy Frontend to AKS') {
+            steps {
+                sh '''
+                    cd k8s/
+                    kubectl apply -f frontend-substituted.yaml
+                '''
+            }
+        }
+        stage('Wait for Manual Testing') {
+            steps {
+                sh 'sleep 120'
+            }
+        }
+        stage('Destroy Staging Environment') {
+            steps {
+                sh '''
+                    cd k8s/
+                    kubectl delete -f configmaps.yaml
+                    kubectl delete -f secrets.yaml
+                    kubectl delete -f product-db.yaml
+                    kubectl delete -f order-db.yaml
+                    kubectl delete -f customer-db.yaml
+                    kubectl delete -f order-service.yaml
+                    kubectl delete -f product-service.yaml
+                    kubectl delete -f customer-service.yaml
+                    kubectl delete -f frontend.yaml
+                '''
+            }
+        }
+        stage('Deploy to Production') {
+            when {
+                allOf {
+                    expression { 
+                        // Deploy only if branch is main and build is not a PR (i.e., merged)
+                        env.BRANCH == 'main' && !env.CHANGE_ID
+                    }
+                }
+            }
+            steps {
+                echo 'Deploying to production environment...'
+                // Add your production deployment steps heres
+                // For example, set production resource group, AKS cluster, etc.
+                sh '''
+                    # Example: set production variables
+                    export RESOURCE_GROUP=$PRODUCTION_RESOURCE_GROUP
+                    export AKS_CLUSTER=$PRODUCTION_AKS_CLUSTER
+                    # Repeat deployment steps for production
+                    az aks get-credentials --resource-group $RESOURCE_GROUP --name $AKS_CLUSTER --overwrite-existing
+                    # ...repeat apply steps for production manifests...
+                '''
+            }
+        }
+    }
+}
+
+// Helper function to deploy a service
+def deployService(String serviceName, String imageTag, String environment) {
+    sh """
+        # Update image in deployment
+        sed -i 's|image:.*|image: ${ACR_LOGIN_SERVER}/${serviceName}:${imageTag}|g' k8s/${serviceName}.yaml
+
+        # Apply Kubernetes manifests
+        kubectl apply -f k8s/${serviceName}.yaml
+        kubectl apply -f k8s/${serviceName}-configmap.yaml
+
+        # Set environment-specific configurations
+        kubectl set env deployment/${serviceName} ENVIRONMENT=${environment}
+        kubectl set env deployment/${serviceName} APPLICATION_INSIGHTS_KEY=\${APPLICATION_INSIGHTS_KEY}
+
+        # Wait for rollout to complete
+        kubectl rollout status deployment/${serviceName} --timeout=300s
+    """
+}

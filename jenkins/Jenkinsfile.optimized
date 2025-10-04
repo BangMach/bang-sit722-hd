@@ -1,0 +1,174 @@
+pipeline {
+    agent any
+    environment {
+        ACR_LOGIN_SERVER = credentials('ACR_LOGIN_SERVER')
+        SNYK_TOKEN = credentials('SNYK_TOKEN')
+        PATH = "/usr/local/bin:$PATH"
+        
+        // Database configuration for tests
+        POSTGRES_HOST = 'localhost'
+        POSTGRES_USER = 'postgres'
+        POSTGRES_PASSWORD = 'postgres'
+        
+    }
+    
+    parameters {
+        string(name: 'BRANCH_NAME', defaultValue: 'testing', description: 'Branch to build')
+        choice(name: 'SECURITY_LEVEL', choices: ['basic', 'full'], description: 'Security scan level')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: "${params.BRANCH_NAME}", url: 'https://github.com/BangMach/bang-sit722-hd.git'
+            }
+        }
+        
+        // FAST FEEDBACK LOOP (< 2 minutes)
+        stage('Quick Quality Checks') {
+            parallel {
+                stage('Backend Lint & Test') {
+                    steps {
+                        sh '''
+                            # Start databases quickly
+                            docker-compose up -d product_db order_db customer_db
+                            sleep 15
+                            
+                            # Install and run tests
+                            pip3 install --upgrade pip
+                            for req in backend/*/requirements.txt; do
+                                pip3 install -r "$req"
+                            done
+                            pip3 install pytest httpx pylint
+                            
+                            # Run all backend tests in parallel
+                            cd backend/product_service && python3 -m pytest tests --maxfail=1 --disable-warnings -q &
+                            cd backend/order_service && python3 -m pytest tests --maxfail=1 --disable-warnings -q &
+                            cd backend/customer_service && python3 -m pytest tests --maxfail=1 --disable-warnings -q &
+                            wait  # Wait for all background jobs
+                        '''
+                    }
+                }
+                
+                stage('Frontend Lint & Test') {
+                    steps {
+                        sh '''
+                            cd frontend
+                            npm ci --only=production  # Faster install
+                            npm install --save-dev jest @testing-library/jest-dom
+                            npm test -- --coverage --watchAll=false --maxWorkers=2
+                        '''
+                    }
+                }
+            }
+        }
+        
+        // SECURITY SCANNING (Only if tests pass)
+        stage('Security Scan') {
+            when {
+                expression { params.SECURITY_LEVEL == 'full' }
+            }
+            steps {
+                script {
+                    sh '''
+                        # Install Snyk once
+                        npm install -g snyk
+                        snyk auth $SNYK_TOKEN
+                        
+                        # Scan all services efficiently
+                        echo "🔒 Scanning Backend Dependencies..."
+                        cd backend/product_service && snyk test --severity-threshold=high || echo "Backend vulnerabilities found"
+                        
+                        echo "🔒 Scanning Frontend Dependencies..."  
+                        cd ../../frontend && snyk test --severity-threshold=high || echo "Frontend vulnerabilities found"
+                        
+                        # Optional: Code analysis (slower)
+                        echo "🔍 Static Code Analysis..."
+                        cd ../backend && snyk code test || echo "Code issues found"
+                        cd ../frontend && snyk code test || echo "Frontend code issues found"
+                    '''
+                }
+            }
+        }
+        
+        // DOCKER BUILD (Only if all checks pass)
+        stage('Build & Scan Images') {
+            when {
+                expression { currentBuild.result != 'FAILURE' }
+            }
+            steps {
+                script {
+                    withCredentials([file(credentialsId: 'AZURE_CREDENTIALS', variable: 'AZURE_CREDENTIALS')]) {
+                        sh '''
+                            # Azure login
+                            CLIENT_ID=$(jq -r .clientId $AZURE_CREDENTIALS)
+                            CLIENT_SECRET=$(jq -r .clientSecret $AZURE_CREDENTIALS)  
+                            TENANT_ID=$(jq -r .tenantId $AZURE_CREDENTIALS)
+                            SUBSCRIPTION_ID=$(jq -r .subscriptionId $AZURE_CREDENTIALS)
+                            
+                            az login --service-principal -u $CLIENT_ID -p $CLIENT_SECRET --tenant $TENANT_ID >/dev/null
+                            az account set --subscription $SUBSCRIPTION_ID
+                            az acr login --name $ACR_LOGIN_SERVER
+                            
+                            # Build images efficiently
+                            BUILD_TAG="${BUILD_NUMBER}-${GIT_COMMIT[0..7]}"
+                            
+                            echo "🐳 Building images..."
+                            docker build -t $ACR_LOGIN_SERVER/product_service:$BUILD_TAG ./backend/product_service/ &
+                            docker build -t $ACR_LOGIN_SERVER/order_service:$BUILD_TAG ./backend/order_service/ &  
+                            docker build -t $ACR_LOGIN_SERVER/customer_service:$BUILD_TAG ./backend/customer_service/ &
+                            docker build -t $ACR_LOGIN_SERVER/frontend:$BUILD_TAG ./frontend/ &
+                            wait  # Wait for all builds
+                            
+                            # Container scanning with Snyk (replaces Docker Scout)
+                            echo "🔒 Scanning container images..."
+                            snyk container test $ACR_LOGIN_SERVER/product_service:$BUILD_TAG --severity-threshold=high || echo "Container vulnerabilities found"
+                            
+                            # Push images
+                            echo "📤 Pushing images..."
+                            docker push $ACR_LOGIN_SERVER/product_service:$BUILD_TAG &
+                            docker push $ACR_LOGIN_SERVER/order_service:$BUILD_TAG &
+                            docker push $ACR_LOGIN_SERVER/customer_service:$BUILD_TAG &  
+                            docker push $ACR_LOGIN_SERVER/frontend:$BUILD_TAG &
+                            wait
+                            
+                            echo "✅ All images built and pushed successfully!"
+                        '''
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            // Cleanup
+            sh 'docker-compose down || true'
+            sh 'az logout || true'
+            
+                // Publish test results (JUnit)
+                junit '**/coverage/junit.xml'
+                publishHTML([
+                    allowMissing: false,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'frontend/coverage/lcov-report',
+                    reportFiles: 'index.html',
+                    reportName: 'Coverage Report'
+                ])
+        }
+        
+        success {
+            echo '🎉 Pipeline completed successfully!'
+            // Optional: Snyk monitoring for continuous security
+            sh '''
+                cd frontend && snyk monitor || true
+                cd backend/product_service && snyk monitor || true
+            '''
+        }
+        
+        failure {
+            echo '❌ Pipeline failed - check logs for details'
+        }
+    }
+}

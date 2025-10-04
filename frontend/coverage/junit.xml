@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="jest tests" tests="11" failures="0" errors="0" time="1.167">
+  <testsuite name="Frontend E-commerce Application Tests" errors="0" failures="0" skipped="0" timestamp="2025-09-29T08:41:54" time="0.638" tests="11">
+    <testcase classname="Frontend E-commerce Application Tests Utility Functions formatCurrency should format numbers correctly" name="Frontend E-commerce Application Tests Utility Functions formatCurrency should format numbers correctly" time="0.031">
+    </testcase>
+    <testcase classname="Frontend E-commerce Application Tests Utility Functions showMessage should display message correctly" name="Frontend E-commerce Application Tests Utility Functions showMessage should display message correctly" time="0.02">
+    </testcase>
+    <testcase classname="Frontend E-commerce Application Tests DOM Element Access all required DOM elements should exist" name="Frontend E-commerce Application Tests DOM Element Access all required DOM elements should exist" time="0.009">
+    </testcase>
+    <testcase classname="Frontend E-commerce Application Tests API Interaction Tests fetch products should handle successful response" name="Frontend E-commerce Application Tests API Interaction Tests fetch products should handle successful response" time="0.015">
+    </testcase>
+    <testcase classname="Frontend E-commerce Application Tests API Interaction Tests fetch products should handle error response" name="Frontend E-commerce Application Tests API Interaction Tests fetch products should handle error response" time="0.018">
+    </testcase>
+    <testcase classname="Frontend E-commerce Application Tests API Interaction Tests create product should send correct data" name="Frontend E-commerce Application Tests API Interaction Tests create product should send correct data" time="0.006">
+    </testcase>
+    <testcase classname="Frontend E-commerce Application Tests Form Validation Tests product form should validate required fields" name="Frontend E-commerce Application Tests Form Validation Tests product form should validate required fields" time="0.007">
+    </testcase>
+    <testcase classname="Frontend E-commerce Application Tests Form Validation Tests customer form should validate email format" name="Frontend E-commerce Application Tests Form Validation Tests customer form should validate email format" time="0.007">
+    </testcase>
+    <testcase classname="Frontend E-commerce Application Tests Shopping Cart Tests cart should calculate total correctly" name="Frontend E-commerce Application Tests Shopping Cart Tests cart should calculate total correctly" time="0.006">
+    </testcase>
+    <testcase classname="Frontend E-commerce Application Tests Shopping Cart Tests cart should add items correctly" name="Frontend E-commerce Application Tests Shopping Cart Tests cart should add items correctly" time="0.004">
+    </testcase>
+    <testcase classname="Frontend E-commerce Application Tests Error Handling Tests should handle network errors gracefully" name="Frontend E-commerce Application Tests Error Handling Tests should handle network errors gracefully" time="0.006">
+    </testcase>
+  </testsuite>
+</testsuites>
