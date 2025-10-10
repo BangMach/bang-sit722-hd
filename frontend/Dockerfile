@@ -22,7 +22,7 @@ RUN snyk test --severity-threshold=high || echo "Vulnerabilities found but conti
 RUN snyk code test || echo "Code analysis completed"
 
 # Stage 2: Production
-FROM nginx:1.25-alpine AS production
+FROM nginx:1.29.2-alpine AS production
 
 # Copy nginx configuration
 COPY nginx.conf /etc/nginx/conf.d/default.conf
