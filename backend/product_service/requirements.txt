@@ -6,3 +6,4 @@ python-multipart
 pydantic
 azure-storage-blob
 aio-pika
+urllib3>=2.6.0 # not directly required, pinned by Snyk to avoid a vulnerability
