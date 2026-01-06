@@ -1,6 +1,6 @@
 # week05/backend/product_service/Dockerfile
 
-FROM python:3.10-slim-buster
+FROM python:3.15-rc-slim-trixie
 
 WORKDIR /code
 
